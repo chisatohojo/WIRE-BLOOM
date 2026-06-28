@@ -18,7 +18,7 @@ export const audioConfig = {
     windowMs: 90,
   },
   orb: {
-    volume: 0.052,
+    volume: 0.104,
     minHz: 900,
     maxHz: 1400,
     pitchStepHz: 78,
