@@ -38,6 +38,16 @@ type PlayerTrailSegment = {
   life: number;
 };
 
+type FixedButtonHitArea = {
+  rect: Phaser.Geom.Rectangle;
+  onSelect: () => void;
+};
+
+type LevelUpHitArea = {
+  rect: Phaser.Geom.Rectangle;
+  upgradeId: UpgradeId;
+};
+
 export class GameScene extends Phaser.Scene {
   private grid!: Phaser.GameObjects.Graphics;
   private core!: Phaser.GameObjects.Graphics;
@@ -61,6 +71,8 @@ export class GameScene extends Phaser.Scene {
   private levelUpOverlay: Phaser.GameObjects.Container | null = null;
   private pauseOverlay: Phaser.GameObjects.Container | null = null;
   private pauseMode: PauseMenuMode = 'main';
+  private fixedButtonHitAreas: FixedButtonHitArea[] = [];
+  private levelUpHitAreas: LevelUpHitArea[] = [];
   private readonly center = new Phaser.Math.Vector2();
   private enemies: Enemy[] = [];
   private expOrbs: ExpOrb[] = [];
@@ -116,7 +128,12 @@ export class GameScene extends Phaser.Scene {
     this.runStatsSystem = new RunStatsSystem();
     this.totalStatsSystem = new TotalStatsSystem();
     this.hasSavedRunStats = false;
+    this.isPaused = false;
     this.isGameOver = false;
+    this.pauseOverlay = null;
+    this.gameOverOverlay = null;
+    this.fixedButtonHitAreas = [];
+    this.levelUpHitAreas = [];
     this.playerMaxHp = gameplayConfig.player.maxHp;
     this.playerHp = this.playerMaxHp;
     this.invincibleUntil = 0;
@@ -153,6 +170,7 @@ export class GameScene extends Phaser.Scene {
     this.input.keyboard!.on('keydown-M', this.toggleMute, this);
     this.input.keyboard!.on('keydown-SPACE', this.resumeAudio, this);
     this.input.on('pointerdown', this.resumeAudio, this);
+    this.input.on('pointerdown', this.handleFixedUiPointerDown, this);
     window.addEventListener('keydown', this.handleWindowKeyDown);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.removeWindowListeners, this);
 
@@ -803,6 +821,7 @@ export class GameScene extends Phaser.Scene {
     statsBox.strokeRect(width * 0.5 + 80, 202, 270, 168);
 
     this.currentUpgradeChoices = upgradeChoices;
+    this.levelUpHitAreas = [];
     container.setScrollFactor(0);
     container.add([backdrop, panel, statsBox]);
     container.add(
@@ -849,7 +868,10 @@ export class GameScene extends Phaser.Scene {
       optionBox.strokeRect(optionX - optionWidth * 0.5, optionY - optionHeight * 0.5, optionWidth, optionHeight);
 
       optionZone.on('pointerover', () => this.audioSystem.playUiHover());
-      optionZone.on('pointerdown', () => this.applyUpgrade(choice.id));
+      this.levelUpHitAreas.push({
+        rect: new Phaser.Geom.Rectangle(optionX - optionWidth * 0.5, optionY - optionHeight * 0.5, optionWidth, optionHeight),
+        upgradeId: choice.id,
+      });
 
       container.add([optionBox, optionZone]);
       container.add(
@@ -989,6 +1011,7 @@ export class GameScene extends Phaser.Scene {
     this.levelUpOverlay?.destroy(true);
     this.levelUpOverlay = null;
     this.currentUpgradeChoices = [];
+    this.levelUpHitAreas = [];
     this.enemySpawnTimer.paused = false;
 
     if (this.experience >= this.expToNextLevel) {
@@ -1105,8 +1128,41 @@ export class GameScene extends Phaser.Scene {
     this.audioSystem.resume();
   }
 
+  private handleFixedUiPointerDown(pointer: Phaser.Input.Pointer): void {
+    if (this.levelUpOverlay) {
+      const levelUpHit = this.levelUpHitAreas.find((hitArea) =>
+        Phaser.Geom.Rectangle.Contains(hitArea.rect, pointer.x, pointer.y),
+      );
+
+      if (levelUpHit) {
+        this.resumeAudio();
+        this.applyUpgrade(levelUpHit.upgradeId);
+      }
+
+      return;
+    }
+
+    if (!this.pauseOverlay && !this.gameOverOverlay) {
+      return;
+    }
+
+    const buttonHit = [...this.fixedButtonHitAreas]
+      .reverse()
+      .find((hitArea) => Phaser.Geom.Rectangle.Contains(hitArea.rect, pointer.x, pointer.y));
+
+    if (!buttonHit) {
+      return;
+    }
+
+    this.resumeAudio();
+    this.audioSystem.playSelect();
+    buttonHit.onSelect();
+  }
+
   private removeWindowListeners(): void {
     window.removeEventListener('keydown', this.handleWindowKeyDown);
+    this.input.off('pointerdown', this.resumeAudio, this);
+    this.input.off('pointerdown', this.handleFixedUiPointerDown, this);
   }
 
   private togglePauseMenu(event?: KeyboardEvent): void {
@@ -1157,6 +1213,7 @@ export class GameScene extends Phaser.Scene {
     this.isPaused = false;
     this.pauseOverlay?.destroy(true);
     this.pauseOverlay = null;
+    this.fixedButtonHitAreas = [];
     this.enemySpawnTimer.paused = false;
     this.resumeSlowMotionTimer();
     this.tweens.resumeAll();
@@ -1168,6 +1225,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.pauseOverlay?.destroy(true);
+    this.fixedButtonHitAreas = [];
 
     const { width, height } = this.scale;
     const panelWidth = 560;
@@ -1368,6 +1426,7 @@ export class GameScene extends Phaser.Scene {
     const backdrop = this.add.graphics();
     const panel = this.add.graphics();
 
+    this.fixedButtonHitAreas = [];
     container.setScrollFactor(0);
     backdrop.fillStyle(colors.overlayFill, 0.86);
     backdrop.fillRect(0, 0, width, height);
@@ -1474,10 +1533,9 @@ export class GameScene extends Phaser.Scene {
     box.lineStyle(1, colors.coreStroke, 0.54);
     box.strokeRect(x - width * 0.5, y - height * 0.5, width, height);
     zone.on('pointerover', () => this.audioSystem.playUiHover());
-    zone.on('pointerdown', () => {
-      this.resumeAudio();
-      this.audioSystem.playSelect();
-      onSelect();
+    this.fixedButtonHitAreas.push({
+      rect: new Phaser.Geom.Rectangle(x - width * 0.5, y - height * 0.5, width, height),
+      onSelect,
     });
 
     container.add([box, text, zone]);
