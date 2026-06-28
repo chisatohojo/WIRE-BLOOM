@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import type { Language, LocalizationKey } from '../config/localization';
 import { colors, gameplayConfig } from '../config/gameplayConfig';
 import { upgradeConfig, type UpgradeDefinition, type UpgradeId } from '../config/upgradeConfig';
-import { Enemy } from '../objects/Enemy';
+import { Enemy, type EnemyTypeConfig } from '../objects/Enemy';
 import { ExpOrb } from '../objects/ExpOrb';
 import { AudioSystem } from '../systems/AudioSystem';
 import { EffectSystem } from '../systems/EffectSystem';
@@ -91,6 +91,7 @@ export class GameScene extends Phaser.Scene {
   private shockwaveComboBonusPerComboBonus = 0;
   private comboGraceBonusMs = 0;
   private playerSpeedMultiplier = 1;
+  private enemySpawnRateMultiplier = 1;
   private playerMaxHp: number = gameplayConfig.player.maxHp;
   private upgradeLevels: Partial<Record<UpgradeId, number>> = {};
   private currentUpgradeChoices: UpgradeDefinition[] = [];
@@ -142,6 +143,7 @@ export class GameScene extends Phaser.Scene {
     this.pulseDamageBonus = 0;
     this.shockwaveComboBonusPerComboBonus = 0;
     this.playerSpeedMultiplier = 1;
+    this.enemySpawnRateMultiplier = 1;
     this.upgradeLevels = {};
     this.currentUpgradeChoices = [];
     this.audioSystem = new AudioSystem();
@@ -174,11 +176,27 @@ export class GameScene extends Phaser.Scene {
     window.addEventListener('keydown', this.handleWindowKeyDown);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.removeWindowListeners, this);
 
+    this.createEnemySpawnTimer();
+  }
+
+  private createEnemySpawnTimer(): void {
     this.enemySpawnTimer = this.time.addEvent({
-      delay: gameplayConfig.enemy.spawnIntervalMs,
+      delay: this.getEnemySpawnIntervalMs(),
       loop: true,
       callback: () => this.spawnEnemy(),
     });
+  }
+
+  private refreshEnemySpawnTimer(): void {
+    const shouldPause = this.isPaused || this.isGameOver || this.levelUpOverlay !== null;
+
+    this.enemySpawnTimer.remove(false);
+    this.createEnemySpawnTimer();
+    this.enemySpawnTimer.paused = shouldPause;
+  }
+
+  private getEnemySpawnIntervalMs(): number {
+    return Math.max(120, gameplayConfig.enemy.spawnIntervalMs / this.enemySpawnRateMultiplier);
   }
 
   update(time: number, delta: number): void {
@@ -300,7 +318,7 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(1, 0)
       .setScrollFactor(0);
 
-    this.upgradeStatusText = this.add.text(24, this.scale.height - 140, '', {
+    this.upgradeStatusText = this.add.text(24, this.scale.height - 168, '', {
       color: colors.mutedText,
       fontFamily: 'Consolas, "Courier New", monospace',
       fontSize: '13px',
@@ -464,11 +482,10 @@ export class GameScene extends Phaser.Scene {
 
   private updateEnemies(delta: number): void {
     const survivors: Enemy[] = [];
-    const spawnedByBoss: Enemy[] = [];
+    const spawnedByParents: Enemy[] = [];
     const enemySpeedMultiplier = this.getEnemySpeedMultiplier();
 
     for (const enemy of this.enemies) {
-      this.updateBossSpawns(enemy, spawnedByBoss);
       enemy.moveToward(this.center, delta, enemySpeedMultiplier);
 
       if (this.handleEnemyContact(enemy)) {
@@ -476,32 +493,45 @@ export class GameScene extends Phaser.Scene {
         continue;
       }
 
+      this.updateChildSpawns(enemy, spawnedByParents);
       survivors.push(enemy);
     }
 
-    this.enemies = [...survivors, ...spawnedByBoss];
+    this.enemies = [...survivors, ...spawnedByParents];
   }
 
-  private updateBossSpawns(enemy: Enemy, spawnedEnemies: Enemy[]): void {
+  private updateChildSpawns(enemy: Enemy, spawnedEnemies: Enemy[]): void {
+    const parentType = this.getEnemyTypeById(enemy.typeId);
+    const maxChildren = this.getMaxSpawnedChildren(parentType);
+
     if (
-      enemy.typeId !== 'boss' ||
-      enemy.childSpawnedCount >= gameplayConfig.enemy.maxSpawnedChildrenPerBoss ||
-      this.enemies.length + spawnedEnemies.length >= gameplayConfig.enemy.maxEnemies ||
+      !this.canEnemySpawnChildren(parentType) ||
+      enemy.childSpawnedCount >= maxChildren ||
       this.time.now < enemy.nextChildSpawnAt
     ) {
       return;
     }
 
-    const childType = this.getEnemyTypeById(gameplayConfig.enemy.bossSpawnEnemyType);
+    const nextSpawnAt = this.time.now + this.getChildSpawnInterval(parentType);
+    const childCandidates = this.getChildSpawnCandidates(parentType);
+
+    if (childCandidates.length <= 0 || this.enemies.length + spawnedEnemies.length >= gameplayConfig.enemy.maxEnemies) {
+      enemy.nextChildSpawnAt = nextSpawnAt;
+      return;
+    }
+
     const spawnCount = Math.min(
-      gameplayConfig.enemy.bossSpawnCount,
+      this.getChildSpawnCount(parentType),
       gameplayConfig.enemy.maxEnemies - this.enemies.length - spawnedEnemies.length,
-      gameplayConfig.enemy.maxSpawnedChildrenPerBoss - enemy.childSpawnedCount,
+      maxChildren - enemy.childSpawnedCount,
     );
 
     for (let index = 0; index < spawnCount; index += 1) {
+      const childType = this.getWeightedEnemyType(childCandidates);
       const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-      const distance = enemy.radius + Phaser.Math.Between(20, 42);
+      const distance =
+        enemy.radius +
+        Phaser.Math.Between(gameplayConfig.enemy.childSpawnDistanceMin, gameplayConfig.enemy.childSpawnDistanceMax);
       const x = Phaser.Math.Clamp(enemy.x + Math.cos(angle) * distance, childType.radius, gameplayConfig.world.width - childType.radius);
       const y = Phaser.Math.Clamp(enemy.y + Math.sin(angle) * distance, childType.radius, gameplayConfig.world.height - childType.radius);
       const speed = Phaser.Math.FloatBetween(gameplayConfig.enemy.speedMin, gameplayConfig.enemy.speedMax);
@@ -510,15 +540,22 @@ export class GameScene extends Phaser.Scene {
       enemy.childSpawnedCount += 1;
     }
 
-    enemy.nextChildSpawnAt = this.time.now + gameplayConfig.enemy.bossSpawnIntervalMs;
-    this.effectSystem.emitShockwaveRing(enemy.x, enemy.y, enemy.radius + 38, 0);
+    enemy.nextChildSpawnAt = nextSpawnAt;
+
+    if (spawnCount > 0) {
+      this.effectSystem.emitShockwaveRing(enemy.x, enemy.y, enemy.radius + 38, 0);
+    }
   }
 
   private getRandomEnemyType(): (typeof gameplayConfig.enemy.types)[number] {
-    const totalWeight = gameplayConfig.enemy.types.reduce((sum, enemyType) => sum + enemyType.spawnWeight, 0);
+    return this.getWeightedEnemyType(gameplayConfig.enemy.types);
+  }
+
+  private getWeightedEnemyType(enemyTypes: readonly (typeof gameplayConfig.enemy.types)[number][]): (typeof gameplayConfig.enemy.types)[number] {
+    const totalWeight = enemyTypes.reduce((sum, enemyType) => sum + enemyType.spawnWeight, 0);
     let roll = Phaser.Math.Between(1, totalWeight);
 
-    for (const enemyType of gameplayConfig.enemy.types) {
+    for (const enemyType of enemyTypes) {
       roll -= enemyType.spawnWeight;
 
       if (roll <= 0) {
@@ -526,11 +563,39 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    return gameplayConfig.enemy.types[0];
+    return enemyTypes[0] ?? gameplayConfig.enemy.types[0];
   }
 
   private getEnemyTypeById(typeId: string): (typeof gameplayConfig.enemy.types)[number] {
     return gameplayConfig.enemy.types.find((enemyType) => enemyType.id === typeId) ?? gameplayConfig.enemy.types[0];
+  }
+
+  private canEnemySpawnChildren(parentType: EnemyTypeConfig): boolean {
+    if ('canSpawnChildren' in parentType && parentType.canSpawnChildren === false) {
+      return false;
+    }
+
+    return parentType.hp >= gameplayConfig.enemy.childSpawnerMinHp && this.getChildSpawnCandidates(parentType).length > 0;
+  }
+
+  private getChildSpawnCandidates(parentType: EnemyTypeConfig): EnemyTypeConfig[] {
+    return gameplayConfig.enemy.types.filter((enemyType) => enemyType.hp < parentType.hp);
+  }
+
+  private getChildSpawnInterval(parentType: EnemyTypeConfig): number {
+    return 'childSpawnIntervalMs' in parentType
+      ? parentType.childSpawnIntervalMs
+      : gameplayConfig.enemy.defaultChildSpawnIntervalMs;
+  }
+
+  private getChildSpawnCount(parentType: EnemyTypeConfig): number {
+    return 'childSpawnCount' in parentType ? parentType.childSpawnCount : gameplayConfig.enemy.defaultChildSpawnCount;
+  }
+
+  private getMaxSpawnedChildren(parentType: EnemyTypeConfig): number {
+    return 'maxSpawnedChildren' in parentType
+      ? parentType.maxSpawnedChildren
+      : gameplayConfig.enemy.defaultMaxSpawnedChildrenPerEnemy;
   }
 
   private handleEnemyContact(enemy: Enemy): boolean {
@@ -992,6 +1057,14 @@ export class GameScene extends Phaser.Scene {
       this.healPlayer(gameplayConfig.upgrades.healAmount);
     }
 
+    if (upgradeId === 'enemyDensityUp') {
+      this.enemySpawnRateMultiplier = Math.min(
+        gameplayConfig.upgrades.enemySpawnRateMax,
+        this.enemySpawnRateMultiplier + gameplayConfig.upgrades.enemySpawnRateBonus,
+      );
+      this.refreshEnemySpawnTimer();
+    }
+
     this.runStatsSystem.recordUpgradeTaken();
     this.updateHpText();
     this.updateUpgradeStatusHud();
@@ -1028,6 +1101,7 @@ export class GameScene extends Phaser.Scene {
       `${this.t('shockwaveRadius')}: ${Math.round(this.getShockwaveRadius(this.combo))}`,
       `${this.t('shockwaveComboBonus')}: +${Math.round((gameplayConfig.combatTuning.comboShockwaveRadiusBonusPerCombo + this.shockwaveComboBonusPerComboBonus) * 100)}%/combo`,
       `${this.t('playerSpeed')}: x${this.playerSpeedMultiplier.toFixed(2)}`,
+      `${this.t('enemyDensity')}: x${this.enemySpawnRateMultiplier.toFixed(2)}`,
     ].join('\n');
   }
 

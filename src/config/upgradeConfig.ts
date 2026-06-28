@@ -10,7 +10,8 @@ export type UpgradeId =
   | 'comboGrace'
   | 'playerSpeed'
   | 'maxHp'
-  | 'healHp';
+  | 'healHp'
+  | 'enemyDensityUp';
 
 export type UpgradeDefinition = {
   id: UpgradeId;
@@ -101,6 +102,14 @@ export const upgradeConfig = {
       nameKey: 'healHp',
       descriptionKey: 'healHpDesc',
       weight: 5,
+    },
+    {
+      id: 'enemyDensityUp',
+      effectType: 'enemyDensityUp',
+      nameKey: 'enemyDensityUpgrade',
+      descriptionKey: 'enemyDensityDesc',
+      maxLevel: 10,
+      weight: 6,
     },
   ] satisfies UpgradeDefinition[],
 } as const;

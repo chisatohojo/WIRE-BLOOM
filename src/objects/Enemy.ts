@@ -14,6 +14,7 @@ export class Enemy extends Phaser.GameObjects.Graphics {
   readonly radius: number;
   readonly damageToPlayer: number;
   readonly typeId: EnemyTypeConfig['id'];
+  readonly initialHp: number;
   childSpawnedCount = 0;
   nextChildSpawnAt = 0;
 
@@ -26,10 +27,11 @@ export class Enemy extends Phaser.GameObjects.Graphics {
 
     this.typeConfig = typeConfig;
     this.typeId = typeConfig.id;
-    this.nextChildSpawnAt = scene.time.now + gameplayConfig.enemy.bossSpawnIntervalMs;
+    this.nextChildSpawnAt = scene.time.now + this.getChildSpawnIntervalMs();
     this.speed = speed * typeConfig.speedMultiplier;
     this.health = typeConfig.hp;
     this.maxHealth = typeConfig.hp;
+    this.initialHp = typeConfig.hp;
     this.expValue = typeConfig.expValue;
     this.radius = typeConfig.radius;
     this.damageToPlayer = typeConfig.damageToPlayer;
@@ -154,5 +156,11 @@ export class Enemy extends Phaser.GameObjects.Graphics {
 
       this.lineBetween(current.x, current.y, next.x, next.y);
     }
+  }
+
+  private getChildSpawnIntervalMs(): number {
+    return 'childSpawnIntervalMs' in this.typeConfig
+      ? this.typeConfig.childSpawnIntervalMs
+      : gameplayConfig.enemy.defaultChildSpawnIntervalMs;
   }
 }

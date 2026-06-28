@@ -84,6 +84,26 @@ key: enemySpeed
 ja: 敵速度
 en: Enemy Speed
 
+key: enemyDensity
+ja: 敵密度
+en: Enemy Density
+
+key: enemyDensityUpgrade
+ja: 敵密度+
+en: Enemy Density +
+
+key: enemyDensityDesc
+ja: 敵の出現数が増える。獲得チャンスも危険も増える。
+en: Increase enemy spawns. More danger, more rewards.
+
+key: childSpawner
+ja: 増殖
+en: Spawner
+
+key: childSpawn
+ja: 子敵生成
+en: Child Spawn
+
 key: pulseDamage
 ja: パルス威力
 en: Pulse Damage
