@@ -78,6 +78,8 @@ export class GameScene extends Phaser.Scene {
   private expOrbs: ExpOrb[] = [];
   private isCharging = false;
   private chargeStartedAt = 0;
+  private suppressPointerPulseUntilReleased = false;
+  private pulseSuppressedUntil = 0;
   private combo = 0;
   private comboExpiresAt = 0;
   private experience = 0;
@@ -145,6 +147,8 @@ export class GameScene extends Phaser.Scene {
     this.expOrbs = [];
     this.isCharging = false;
     this.chargeStartedAt = 0;
+    this.suppressPointerPulseUntilReleased = false;
+    this.pulseSuppressedUntil = 0;
     this.combo = 0;
     this.comboExpiresAt = 0;
     this.experience = 0;
@@ -371,7 +375,19 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handleChargeInput(time: number): void {
-    const wantsCharge = this.spaceKey.isDown || this.input.activePointer.leftButtonDown();
+    const pointerWantsCharge = this.input.activePointer.leftButtonDown();
+
+    if (this.suppressPointerPulseUntilReleased && !pointerWantsCharge) {
+      this.suppressPointerPulseUntilReleased = false;
+    }
+
+    const pointerSuppressed = this.suppressPointerPulseUntilReleased || time < this.pulseSuppressedUntil;
+    const wantsCharge = this.spaceKey.isDown || (pointerWantsCharge && !pointerSuppressed);
+
+    if (pointerSuppressed) {
+      this.isCharging = false;
+      this.chargeRing.clear();
+    }
 
     if (wantsCharge && !this.isCharging) {
       this.isCharging = true;
@@ -1293,6 +1309,13 @@ export class GameScene extends Phaser.Scene {
     this.audioSystem.resume();
   }
 
+  private suppressPulseAfterUiSelection(): void {
+    this.isCharging = false;
+    this.chargeRing.clear();
+    this.suppressPointerPulseUntilReleased = this.input.activePointer.leftButtonDown();
+    this.pulseSuppressedUntil = this.time.now + 180;
+  }
+
   private handleFixedUiPointerDown(pointer: Phaser.Input.Pointer): void {
     if (this.levelUpOverlay) {
       const levelUpHit = this.levelUpHitAreas.find((hitArea) =>
@@ -1300,6 +1323,7 @@ export class GameScene extends Phaser.Scene {
       );
 
       if (levelUpHit) {
+        this.suppressPulseAfterUiSelection();
         this.resumeAudio();
         this.applyUpgrade(levelUpHit.upgradeId);
       }
@@ -1319,6 +1343,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    this.suppressPulseAfterUiSelection();
     this.resumeAudio();
     this.audioSystem.playSelect();
     buttonHit.onSelect();
