@@ -40,7 +40,9 @@ npm.cmd run build
 
 コンボは敵撃破数ではなく、1回のチャージ/発射ごとに+1されます。空撃ちでもパルスを発射した場合はコンボが増えます。
 
-敵がパルスで倒されると、その敵の位置から小さな円形ショックウェーブが発生します。ショックウェーブ内の敵にもダメージが入り、倒れた敵からさらに連鎖します。連鎖上限と半径倍率は `src/config/gameplayConfig.ts` で調整できます。
+敵がパルスで倒されると、その敵の位置から全方位の円形ショックウェーブが発生します。ショックウェーブ内の敵にもダメージが入り、倒れた敵からさらに連鎖します。連鎖上限と半径倍率は `src/config/gameplayConfig.ts` で調整できます。
+
+通常プレイ画面の左下にも、Pulse Radius、Pulse Angle、Orb Magnet、Shockwave Radius、Shockwave Combo Bonus の現在値を表示します。
 
 ## デバッグ表示
 
@@ -78,12 +80,14 @@ npm.cmd run build
 - `enemy.speedMin` / `enemy.speedMax`: 敵の移動速度レンジ
 - `pulse.baseRadius`: パルスの基本半径
 - `pulse.chargeRadiusMultiplier`: 最大チャージ時のパルス半径倍率
-- `pulse.angleDegrees`: 扇形パルスの初期角度幅
-- `shockwave.baseRadius`: 敵撃破時ショックウェーブの基本半径
+- `combatTuning.pulseAngleInitialDegrees`: 扇形パルスの初期角度幅
+- `combatTuning.pulseAngleUpgradeAmountDegrees`: Pulse Angleアップグレードの増加量
+- `combatTuning.shockwaveBaseRadius`: 敵撃破時ショックウェーブの基本半径
+- `combatTuning.shockwaveRadiusUpgradeAmount`: Shockwave Radiusアップグレードの増加量
 - `shockwave.damage`: ショックウェーブのダメージ
-- `shockwave.comboRadiusBonusPerCombo`: コンボ1ごとのショックウェーブ半径倍率ボーナス
-- `shockwave.maxRadiusMultiplier`: ショックウェーブ半径倍率の上限
-- `shockwave.maxChainPerPulse`: 1回のパルス内で処理する最大ショックウェーブ連鎖数
+- `combatTuning.comboShockwaveRadiusBonusPerCombo`: コンボ1ごとのショックウェーブ半径倍率ボーナス
+- `combatTuning.maxShockwaveRadiusMultiplier`: ショックウェーブ半径倍率の上限
+- `combatTuning.maxShockwaveChainPerPulse`: 1回のパルス内で処理する最大ショックウェーブ連鎖数
 - `expOrb.magnetSpeed`: 経験値オーブがコアへ吸い寄せられる速度
 - `progression.baseExpToNextLevel`: レベル2に必要な経験値
 - `progression.expGrowthPerLevel`: レベルごとに増える必要経験値
@@ -101,12 +105,12 @@ npm.cmd run build
 
 ## Level UP
 
-Level UPメニューには現在の主要強化値として、Pulse Radius、Pulse Angle、Orb Magnet、Shockwave Radius、Combo Count を表示します。
+Level UPメニューには現在の主要強化値として、Pulse Radius、Pulse Angle、Orb Magnet、Shockwave Radius、Shockwave Combo Bonus を表示します。通常プレイ画面のアップグレード状況表示と同じ内容です。
 
 追加アップグレード:
 
-- `Pulse Angle +1°`: 扇形パルスの角度幅を1°広げます
-- `Shockwave Radius +`: 敵撃破時ショックウェーブの基本半径を広げます
+- `Pulse Angle +5°`: 扇形パルスの角度幅を5°広げます
+- `Shockwave Radius +`: 敵撃破時の全方位円形ショックウェーブの基本半径を広げます
 
 ## 現在の実装内容
 
@@ -118,7 +122,7 @@ Level UPメニューには現在の主要強化値として、Pulse Radius、Pul
 - 敵撃破時の経験値オーブ
 - EXP、レベル、コンボHUD
 - コンボによる画面揺れと短いスローモーション
-- Level UP 時の3択アップグレード
+- Level UP 時の5択アップグレード
 - F3デバッグ表示
 
 ## 今後の実装候補

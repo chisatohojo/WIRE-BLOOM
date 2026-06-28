@@ -29,7 +29,7 @@ const UPGRADE_CHOICES: UpgradeChoice[] = [
   },
   {
     id: 'pulseAngle',
-    label: 'Pulse Angle +1°',
+    label: 'Pulse Angle +5°',
     detail: 'Pulse cone opens slightly wider.',
   },
   {
@@ -40,7 +40,7 @@ const UPGRADE_CHOICES: UpgradeChoice[] = [
   {
     id: 'shockwaveRadius',
     label: 'Shockwave Radius +',
-    detail: 'Defeat shockwaves reach nearby enemies.',
+    detail: 'Defeated enemies release a larger circular shockwave.',
   },
   {
     id: 'comboGrace',
@@ -57,6 +57,7 @@ export class GameScene extends Phaser.Scene {
   private titleText!: Phaser.GameObjects.Text;
   private comboText!: Phaser.GameObjects.Text;
   private expText!: Phaser.GameObjects.Text;
+  private upgradeStatusText!: Phaser.GameObjects.Text;
   private debugText!: Phaser.GameObjects.Text;
   private audioSystem!: AudioSystem;
   private effectSystem!: EffectSystem;
@@ -114,6 +115,7 @@ export class GameScene extends Phaser.Scene {
   update(time: number, delta: number): void {
     this.effectSystem.update(delta);
     this.updateDebugDisplay(time);
+    this.updateUpgradeStatusHud();
 
     if (this.levelUpOverlay) {
       return;
@@ -199,6 +201,14 @@ export class GameScene extends Phaser.Scene {
       })
       .setOrigin(1, 0);
 
+    this.upgradeStatusText = this.add.text(24, this.scale.height - 104, '', {
+      color: colors.mutedText,
+      fontFamily: 'Consolas, "Courier New", monospace',
+      fontSize: '13px',
+      lineSpacing: 3,
+    });
+    this.upgradeStatusText.setDepth(12);
+
     this.debugText = this.add
       .text(24, 58, '', {
         color: colors.text,
@@ -214,6 +224,7 @@ export class GameScene extends Phaser.Scene {
       .setVisible(false);
 
     this.updateExpText();
+    this.updateUpgradeStatusHud();
   }
 
   private handleChargeInput(time: number): void {
@@ -363,7 +374,7 @@ export class GameScene extends Phaser.Scene {
 
     while (
       shockwaveQueue.length > 0 &&
-      processedCount < gameplayConfig.shockwave.maxChainPerPulse
+      processedCount < gameplayConfig.combatTuning.maxShockwaveChainPerPulse
     ) {
       const source = shockwaveQueue.shift()!;
       const radius = this.getShockwaveRadius(comboAtFire);
@@ -482,6 +493,7 @@ export class GameScene extends Phaser.Scene {
     if (this.combo > 0 && time >= this.comboExpiresAt) {
       this.combo = 0;
       this.updateComboText();
+      this.updateUpgradeStatusHud();
     }
   }
 
@@ -639,7 +651,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (upgradeId === 'pulseAngle') {
-      this.pulseAngleBonusDegrees += gameplayConfig.upgrades.pulseAngleBonusDegrees;
+      this.pulseAngleBonusDegrees += gameplayConfig.combatTuning.pulseAngleUpgradeAmountDegrees;
     }
 
     if (upgradeId === 'orbMagnet') {
@@ -647,13 +659,14 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (upgradeId === 'shockwaveRadius') {
-      this.shockwaveRadiusBonus += gameplayConfig.upgrades.shockwaveRadiusBonus;
+      this.shockwaveRadiusBonus += gameplayConfig.combatTuning.shockwaveRadiusUpgradeAmount;
     }
 
     if (upgradeId === 'comboGrace') {
       this.comboGraceBonusMs += gameplayConfig.upgrades.comboGraceBonusMs;
     }
 
+    this.updateUpgradeStatusHud();
     this.closeLevelUpOverlay();
   }
 
@@ -674,8 +687,16 @@ export class GameScene extends Phaser.Scene {
       `Pulse Angle: ${this.getCurrentPulseAngleDegrees()}°`,
       `Orb Magnet: x${this.orbMagnetMultiplier.toFixed(2)}`,
       `Shockwave Radius: ${Math.round(this.getShockwaveRadius(this.combo))}`,
-      `Combo: ${this.combo}`,
+      `SW Combo: +${Math.round(gameplayConfig.combatTuning.comboShockwaveRadiusBonusPerCombo * 100)}%/combo`,
     ].join('\n');
+  }
+
+  private updateUpgradeStatusHud(): void {
+    if (!this.upgradeStatusText) {
+      return;
+    }
+
+    this.upgradeStatusText.setText(this.getUpgradeStatusText());
   }
 
   private getPulseStats(chargeDuration: number): PulseStats {
@@ -713,7 +734,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getCurrentPulseAngleDegrees(): number {
-    return gameplayConfig.pulse.angleDegrees + this.pulseAngleBonusDegrees;
+    return gameplayConfig.combatTuning.pulseAngleInitialDegrees + this.pulseAngleBonusDegrees;
   }
 
   private getPulseAngleRadians(): number {
@@ -725,10 +746,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getShockwaveRadius(combo: number): number {
-    const baseRadius = gameplayConfig.shockwave.baseRadius + this.shockwaveRadiusBonus;
+    const baseRadius = gameplayConfig.combatTuning.shockwaveBaseRadius + this.shockwaveRadiusBonus;
     const comboMultiplier = Math.min(
-      gameplayConfig.shockwave.maxRadiusMultiplier,
-      1 + combo * gameplayConfig.shockwave.comboRadiusBonusPerCombo,
+      gameplayConfig.combatTuning.maxShockwaveRadiusMultiplier,
+      1 + combo * gameplayConfig.combatTuning.comboShockwaveRadiusBonusPerCombo,
     );
 
     return baseRadius * comboMultiplier;
