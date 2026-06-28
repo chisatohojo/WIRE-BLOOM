@@ -97,6 +97,11 @@ export class GameScene extends Phaser.Scene {
   private slowMotionTimeoutId: number | undefined;
   private slowMotionEndsAt = 0;
   private slowMotionRemainingMs = 0;
+  private readonly handleWindowKeyDown = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape' || event.code === 'Escape') {
+      this.togglePauseMenu(event);
+    }
+  };
 
   constructor() {
     super('GameScene');
@@ -120,11 +125,12 @@ export class GameScene extends Phaser.Scene {
     this.drawGrid();
     this.drawCore();
     this.addHud();
-    this.input.keyboard!.on('keydown-ESC', this.togglePauseMenu, this);
     this.input.keyboard!.on('keydown-F3', this.toggleDebugDisplay, this);
     this.input.keyboard!.on('keydown-M', this.toggleMute, this);
     this.input.keyboard!.on('keydown-SPACE', this.resumeAudio, this);
     this.input.on('pointerdown', this.resumeAudio, this);
+    window.addEventListener('keydown', this.handleWindowKeyDown);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.removeWindowListeners, this);
 
     this.enemySpawnTimer = this.time.addEvent({
       delay: gameplayConfig.enemy.spawnIntervalMs,
@@ -822,6 +828,10 @@ export class GameScene extends Phaser.Scene {
 
   private resumeAudio(): void {
     this.audioSystem.resume();
+  }
+
+  private removeWindowListeners(): void {
+    window.removeEventListener('keydown', this.handleWindowKeyDown);
   }
 
   private togglePauseMenu(event?: KeyboardEvent): void {
