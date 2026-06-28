@@ -144,6 +144,7 @@ Level UPメニューには現在の主要強化値として、Pulse Radius、Pul
 - Stats: Shows current-run play time, level reached, max combo, enemies defeated, pulses fired, EXP collected, and upgrades taken.
 - Settings are saved in `localStorage` under `wireBloom.settings` and `wireBloom.language`.
 - UI text is routed through `src/systems/LocalizationSystem.ts` with strings in `src/config/localization.ts`.
+- Developer-facing localization reference: `docs/i18n_reference.txt`. Update it together with `src/config/localization.ts` when UI text changes.
 
 ## Shockwave Tuning Note
 

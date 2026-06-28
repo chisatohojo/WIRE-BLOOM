@@ -1,0 +1,233 @@
+# WIRE BLOOM i18n Reference
+
+This file is a developer reference for UI localization.
+The actual runtime localization data is stored in:
+src/config/localization.ts
+
+src/config/localization.ts is the source of truth for in-game text.
+This reference file is not loaded by the game.
+
+When adding or changing UI text:
+1. Update src/config/localization.ts
+2. Update this reference file
+3. Check both Japanese and English UI in-game
+
+----------------------------------------
+Common
+----------------------------------------
+
+key: title
+ja: WIRE BLOOM
+en: WIRE BLOOM
+
+key: lv
+ja: LV
+en: LV
+
+key: exp
+ja: EXP
+en: EXP
+
+key: combo
+ja: COMBO
+en: COMBO
+
+key: upgrade
+ja: アップグレード
+en: Upgrade
+
+key: levelUp
+ja: LEVEL UP
+en: LEVEL UP
+
+key: chooseUpgrade
+ja: 強化を選択
+en: Choose an upgrade
+
+key: back
+ja: 戻る
+en: Back
+
+key: on
+ja: ON
+en: ON
+
+key: off
+ja: OFF
+en: OFF
+
+----------------------------------------
+Gameplay HUD / Debug
+----------------------------------------
+
+key: pulseRadius
+ja: パルス半径
+en: Pulse Radius
+
+key: pulseAngle
+ja: パルス角度
+en: Pulse Angle
+
+key: orbMagnet
+ja: オーブ吸引
+en: Orb Magnet
+
+key: shockwaveRadius
+ja: ショックウェーブ範囲
+en: Shockwave Radius
+
+key: shockwaveComboBonus
+ja: コンボ衝撃波補正
+en: Shockwave Combo Bonus
+
+key: comboGrace
+ja: コンボ猶予
+en: Combo Grace
+
+key: fps
+ja: FPS
+en: FPS
+
+key: enemies
+ja: 敵
+en: Enemies
+
+key: level
+ja: レベル
+en: Level
+
+key: charge
+ja: チャージ
+en: Charge
+
+----------------------------------------
+Level UP Upgrades
+----------------------------------------
+
+key: pulseRadiusUpgrade
+ja: パルス半径 +20%
+en: Pulse Radius +20%
+
+key: pulseRadiusUpgradeDetail
+ja: パルスの到達距離が広がる。
+en: Pulse blast radius grows wider.
+
+key: pulseAngleUpgrade
+ja: パルス角度 +5°
+en: Pulse Angle +5°
+
+key: pulseAngleUpgradeDetail
+ja: 扇形パルスの角度幅が広がる。
+en: Pulse cone opens wider.
+
+key: orbMagnetUpgrade
+ja: オーブ吸引 +30%
+en: Orb Magnet +30%
+
+key: orbMagnetUpgradeDetail
+ja: EXPオーブがより速くコアへ向かう。
+en: EXP orbs fly into the core faster.
+
+key: shockwaveRadiusUpgrade
+ja: ショックウェーブ範囲 +
+en: Shockwave Radius +
+
+key: shockwaveRadiusUpgradeDetail
+ja: 倒した敵がより大きな円形ショックウェーブを放つ。
+en: Defeated enemies release a larger circular shockwave.
+
+key: comboGraceUpgrade
+ja: コンボ猶予 +1.5秒
+en: Combo Grace +1.5s
+
+key: comboGraceUpgradeDetail
+ja: コンボが切れるまでの時間が伸びる。
+en: Combo timer stays open longer.
+
+----------------------------------------
+Pause / Settings
+----------------------------------------
+
+key: resume
+ja: 再開
+en: Resume
+
+key: settings
+ja: 設定
+en: Settings
+
+key: stats
+ja: 戦績
+en: Stats
+
+key: restart
+ja: リスタート
+en: Restart
+
+key: quitToTitle
+ja: タイトルへ戻る
+en: Quit to Title
+
+key: language
+ja: 言語
+en: Language
+
+key: japanese
+ja: 日本語
+en: Japanese
+
+key: english
+ja: English
+en: English
+
+key: masterVolume
+ja: 全体音量
+en: Master Volume
+
+key: sfxVolume
+ja: 効果音
+en: SFX Volume
+
+key: musicVolume
+ja: BGM
+en: Music Volume
+
+key: muted
+ja: ミュート
+en: Muted
+
+----------------------------------------
+Results / Stats
+----------------------------------------
+
+key: results
+ja: 戦績
+en: Results
+
+key: playTime
+ja: プレイ時間
+en: Play Time
+
+key: levelReached
+ja: 到達レベル
+en: Level Reached
+
+key: maxCombo
+ja: 最大コンボ
+en: Max Combo
+
+key: enemiesDefeated
+ja: 撃破数
+en: Enemies Defeated
+
+key: pulsesFired
+ja: 発射回数
+en: Pulses Fired
+
+key: expCollected
+ja: 取得EXP
+en: EXP Collected
+
+key: upgradesTaken
+ja: 取得アップグレード
+en: Upgrades Taken
