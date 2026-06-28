@@ -128,17 +128,40 @@ export class GameScene extends Phaser.Scene {
     this.localization = new LocalizationSystem(this.settingsSystem.snapshot.language);
     this.runStatsSystem = new RunStatsSystem();
     this.totalStatsSystem = new TotalStatsSystem();
+    if (this.slowMotionTimeoutId !== undefined) {
+      window.clearTimeout(this.slowMotionTimeoutId);
+      this.slowMotionTimeoutId = undefined;
+    }
+
     this.hasSavedRunStats = false;
+    this.levelUpOverlay = null;
     this.isPaused = false;
     this.isGameOver = false;
     this.pauseOverlay = null;
     this.gameOverOverlay = null;
     this.fixedButtonHitAreas = [];
     this.levelUpHitAreas = [];
+    this.enemies = [];
+    this.expOrbs = [];
+    this.isCharging = false;
+    this.chargeStartedAt = 0;
+    this.combo = 0;
+    this.comboExpiresAt = 0;
+    this.experience = 0;
+    this.level = 1;
+    this.expToNextLevel = gameplayConfig.progression.baseExpToNextLevel;
+    this.pulseRadiusMultiplier = 1;
+    this.pulseAngleBonusDegrees = 0;
+    this.orbMagnetMultiplier = 1;
+    this.shockwaveRadiusBonus = 0;
+    this.comboGraceBonusMs = 0;
     this.playerMaxHp = gameplayConfig.player.maxHp;
     this.playerHp = this.playerMaxHp;
     this.invincibleUntil = 0;
     this.damageFlashUntil = 0;
+    this.gameSpeed = 1;
+    this.slowMotionEndsAt = 0;
+    this.slowMotionRemainingMs = 0;
     this.playerTrailSegments = [];
     this.pulseDamageBonus = 0;
     this.shockwaveComboBonusPerComboBonus = 0;
@@ -869,6 +892,11 @@ export class GameScene extends Phaser.Scene {
     const optionWidth = 360;
     const optionHeight = 42;
     const upgradeChoices = this.getLevelUpChoices();
+    const upgradeStatusText = this.getUpgradeStatusText();
+    const statusBoxX = width * 0.5 + 54;
+    const statusBoxY = 190;
+    const statusBoxWidth = 330;
+    const statusBoxHeight = Math.max(218, upgradeStatusText.split('\n').length * 19 + 34);
     const container = this.add.container(0, 0).setDepth(30);
     const backdrop = this.add.graphics();
     const panel = this.add.graphics();
@@ -881,9 +909,9 @@ export class GameScene extends Phaser.Scene {
     panel.lineStyle(1, colors.pulseAccent, 0.72);
     panel.strokeRect(panelX, panelY, panelWidth, panelHeight);
     statsBox.fillStyle(colors.background, 0.62);
-    statsBox.fillRect(width * 0.5 + 80, 202, 270, 168);
+    statsBox.fillRect(statusBoxX, statusBoxY, statusBoxWidth, statusBoxHeight);
     statsBox.lineStyle(1, colors.coreStroke, 0.34);
-    statsBox.strokeRect(width * 0.5 + 80, 202, 270, 168);
+    statsBox.strokeRect(statusBoxX, statusBoxY, statusBoxWidth, statusBoxHeight);
 
     this.currentUpgradeChoices = upgradeChoices;
     this.levelUpHitAreas = [];
@@ -911,11 +939,11 @@ export class GameScene extends Phaser.Scene {
     );
 
     container.add(
-      this.add.text(width * 0.5 + 100, 216, this.getUpgradeStatusText(), {
+      this.add.text(statusBoxX + 22, statusBoxY + 17, upgradeStatusText, {
         color: colors.text,
         fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '14px',
-        lineSpacing: 7,
+        fontSize: '13px',
+        lineSpacing: 5,
       }),
     );
 
@@ -1442,9 +1470,10 @@ export class GameScene extends Phaser.Scene {
     const labelX = panelX + 92;
     const valueX = panelX + 408;
     const rowStartY = panelY + 100;
+    const rowGap = 32;
 
     rows.forEach(([labelKey, value], index) => {
-      const y = rowStartY + index * 38;
+      const y = rowStartY + index * rowGap;
 
       container.add(
         this.add.text(labelX, y, this.t(labelKey), {
@@ -1464,7 +1493,7 @@ export class GameScene extends Phaser.Scene {
       );
     });
 
-    this.addMenuButton(container, panelX + 100, panelY + 450, 132, 36, this.t('back'), () => this.openPauseMenu('main'));
+    this.addMenuButton(container, panelX + 100, panelY + 446, 132, 36, this.t('back'), () => this.openPauseMenu('main'));
   }
 
   private openGameOverOverlay(): void {
@@ -1481,9 +1510,12 @@ export class GameScene extends Phaser.Scene {
 
     const { width, height } = this.scale;
     const panelWidth = 620;
-    const panelHeight = 430;
+    const panelHeight = 460;
     const panelX = width * 0.5 - panelWidth * 0.5;
     const panelY = height * 0.5 - panelHeight * 0.5;
+    const rowStartY = panelY + 94;
+    const rowGap = 30;
+    const actionY = panelY + panelHeight - 54;
     const stats = this.runStatsSystem.snapshot;
     const rows: Array<[LocalizationKey, string]> = [
       ['playTime', this.formatPlayTime(stats.playTimeMs)],
@@ -1524,7 +1556,7 @@ export class GameScene extends Phaser.Scene {
     );
 
     rows.forEach(([key, value], index) => {
-      const y = panelY + 92 + index * 32;
+      const y = rowStartY + index * rowGap;
 
       container.add(
         this.add.text(panelX + 92, y, this.t(key), {
@@ -1544,8 +1576,8 @@ export class GameScene extends Phaser.Scene {
       );
     });
 
-    this.addMenuButton(container, width * 0.5 - 90, panelY + 382, 150, 38, this.t('restart'), () => this.restartRun());
-    this.addMenuButton(container, width * 0.5 + 110, panelY + 382, 190, 38, this.t('quitToTitle'), () => this.quitToTitle());
+    this.addMenuButton(container, width * 0.5 - 90, actionY, 150, 38, this.t('restart'), () => this.restartRun());
+    this.addMenuButton(container, width * 0.5 + 110, actionY, 190, 38, this.t('quitToTitle'), () => this.quitToTitle());
     this.gameOverOverlay = container;
   }
 
