@@ -1,0 +1,57 @@
+export const audioConfig = {
+  masterVolume: 0.34,
+  mutedByDefault: false,
+  pulse: {
+    volume: 0.14,
+    lowStartHz: 90,
+    lowEndHz: 60,
+    durationMs: 180,
+    noiseVolume: 0.035,
+    noiseDurationMs: 95,
+    noiseFilterHz: 3600,
+  },
+  hit: {
+    volume: 0.04,
+    frequencyHz: 600,
+    durationMs: 34,
+    maxPerWindow: 5,
+    windowMs: 90,
+  },
+  orb: {
+    volume: 0.052,
+    minHz: 900,
+    maxHz: 1400,
+    pitchStepHz: 78,
+    durationMs: 72,
+    resetAfterMs: 430,
+  },
+  combo10: {
+    volume: 0.07,
+    frequenciesHz: [660, 990],
+    durationMs: 118,
+  },
+  combo50: {
+    volume: 0.085,
+    frequenciesHz: [523, 784, 1046],
+    durationMs: 175,
+  },
+  levelup: {
+    volume: 0.085,
+    notesHz: [523, 659, 784, 1046],
+    noteDurationMs: 96,
+    noteGapMs: 46,
+  },
+  select: {
+    volume: 0.056,
+    startHz: 440,
+    endHz: 620,
+    durationMs: 86,
+  },
+  uiHover: {
+    volume: 0.026,
+    startHz: 620,
+    endHz: 720,
+    durationMs: 44,
+    cooldownMs: 55,
+  },
+} as const;

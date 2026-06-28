@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { colors, gameplayConfig } from '../config/gameplayConfig';
 import { Enemy } from '../objects/Enemy';
 import { ExpOrb } from '../objects/ExpOrb';
+import { AudioSystem } from '../systems/AudioSystem';
 import { EffectSystem } from '../systems/EffectSystem';
 
 type PulseStats = {
@@ -45,6 +46,7 @@ export class GameScene extends Phaser.Scene {
   private comboText!: Phaser.GameObjects.Text;
   private expText!: Phaser.GameObjects.Text;
   private debugText!: Phaser.GameObjects.Text;
+  private audioSystem!: AudioSystem;
   private effectSystem!: EffectSystem;
   private enemySpawnTimer!: Phaser.Time.TimerEvent;
   private levelUpOverlay: Phaser.GameObjects.Container | null = null;
@@ -74,6 +76,7 @@ export class GameScene extends Phaser.Scene {
     this.center.set(this.scale.width * 0.5, this.scale.height * 0.5);
 
     this.grid = this.add.graphics().setDepth(0);
+    this.audioSystem = new AudioSystem();
     this.effectSystem = new EffectSystem(this);
     this.core = this.add.graphics();
     this.chargeRing = this.add.graphics().setDepth(4);
@@ -83,6 +86,9 @@ export class GameScene extends Phaser.Scene {
     this.drawCore();
     this.addHud();
     this.input.keyboard!.on('keydown-F3', this.toggleDebugDisplay, this);
+    this.input.keyboard!.on('keydown-M', this.toggleMute, this);
+    this.input.keyboard!.on('keydown-SPACE', this.resumeAudio, this);
+    this.input.on('pointerdown', this.resumeAudio, this);
 
     this.enemySpawnTimer = this.time.addEvent({
       delay: gameplayConfig.enemy.spawnIntervalMs,
@@ -233,6 +239,7 @@ export class GameScene extends Phaser.Scene {
     const pulse = this.getPulseStats(chargeDuration);
     const defeatedCount = this.damageEnemiesInRadius(pulse);
 
+    this.audioSystem.playPulse(pulse.chargeRatio);
     this.effectSystem.emitPulseRings(this.center.x, this.center.y, pulse.radius, pulse.chargeRatio);
 
     if (defeatedCount > 0) {
@@ -295,6 +302,7 @@ export class GameScene extends Phaser.Scene {
       }
 
       if (enemy.takeDamage(pulse.damage)) {
+        this.audioSystem.playHit();
         this.effectSystem.emitEnemyBurst(enemy.x, enemy.y, pulse.chargeRatio, enemy.maxHealth);
         this.expOrbs.push(new ExpOrb(this, enemy.x, enemy.y, enemy.expValue));
         enemy.playDefeatFlash();
@@ -317,6 +325,7 @@ export class GameScene extends Phaser.Scene {
       this.effectSystem.emitOrbTrail(orb.x, orb.y, this.orbMagnetMultiplier);
 
       if (orb.isCollectedBy(this.center, this.orbMagnetMultiplier)) {
+        this.audioSystem.playOrb();
         this.effectSystem.emitOrbTrail(orb.x, orb.y, this.orbMagnetMultiplier * 1.6);
         this.effectSystem.emitCoreAbsorb(this.center.x, this.center.y, this.orbMagnetMultiplier);
         this.gainExperience(orb.value);
@@ -345,6 +354,7 @@ export class GameScene extends Phaser.Scene {
     this.level += 1;
     this.expToNextLevel = this.getExpToNextLevel();
     this.updateExpText();
+    this.audioSystem.playLevelUp();
     this.openLevelUpOverlay();
   }
 
@@ -355,6 +365,7 @@ export class GameScene extends Phaser.Scene {
     this.comboExpiresAt = this.time.now + gameplayConfig.combo.graceMs + this.comboGraceBonusMs;
     this.updateComboText();
     this.animateComboText();
+    this.playComboMilestoneSound(previousCombo, this.combo);
     this.shakeForCombo(previousCombo, defeatedCount);
 
     if (this.crossedComboMilestone(previousCombo, this.combo, gameplayConfig.combo.slowMotionEvery)) {
@@ -473,6 +484,7 @@ export class GameScene extends Phaser.Scene {
       optionBox.lineStyle(1, colors.coreStroke, gameplayConfig.levelUp.optionStrokeAlpha);
       optionBox.strokeRect(width * 0.5 - 260, optionY - 24, 520, 48);
 
+      optionZone.on('pointerover', () => this.audioSystem.playUiHover());
       optionZone.on('pointerdown', () => this.applyUpgrade(choice.id));
 
       container.add([optionBox, optionZone]);
@@ -514,6 +526,8 @@ export class GameScene extends Phaser.Scene {
     if (!this.levelUpOverlay) {
       return;
     }
+
+    this.audioSystem.playSelect();
 
     if (upgradeId === 'pulseRadius') {
       this.pulseRadiusMultiplier *= gameplayConfig.upgrades.pulseRadiusMultiplier;
@@ -567,6 +581,26 @@ export class GameScene extends Phaser.Scene {
     this.debugVisible = !this.debugVisible;
     this.debugText.setVisible(this.debugVisible);
     this.updateDebugDisplay(this.time.now);
+  }
+
+  private toggleMute(event?: KeyboardEvent): void {
+    event?.preventDefault();
+    this.audioSystem.toggleMute();
+  }
+
+  private resumeAudio(): void {
+    this.audioSystem.resume();
+  }
+
+  private playComboMilestoneSound(previousCombo: number, currentCombo: number): void {
+    if (this.crossedComboMilestone(previousCombo, currentCombo, gameplayConfig.combo.slowMotionEvery)) {
+      this.audioSystem.playCombo50();
+      return;
+    }
+
+    if (this.crossedComboMilestone(previousCombo, currentCombo, gameplayConfig.combo.shakeStepEvery)) {
+      this.audioSystem.playCombo10();
+    }
   }
 
   private updateDebugDisplay(time: number): void {
