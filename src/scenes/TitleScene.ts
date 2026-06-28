@@ -51,6 +51,8 @@ export class TitleScene extends Phaser.Scene {
   private pulses: TitlePulse[] = [];
   private particles: TitleParticle[] = [];
   private nextPulseAt = 0;
+  private recordsScrollOffset = 0;
+  private recordsMaxScroll = 0;
 
   constructor() {
     super('TitleScene');
@@ -71,6 +73,7 @@ export class TitleScene extends Phaser.Scene {
     this.renderUi();
     this.input.keyboard!.on('keydown', this.handleKeyDown, this);
     this.input.on('pointerdown', this.resumeAudio, this);
+    this.input.on('wheel', this.handleWheel, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
   }
 
@@ -289,14 +292,16 @@ export class TitleScene extends Phaser.Scene {
 
   private renderOptions(container: Phaser.GameObjects.Container): void {
     const settings = this.settingsSystem.snapshot;
-    const panelX = 250;
-    const panelY = 150;
+    const panelX = this.scale.width * 0.5 - 290;
+    const panelY = 138;
+    const panelWidth = 580;
+    const panelHeight = 370;
     const labelX = panelX + 70;
-    const valueX = panelX + 330;
-    const rowStartY = panelY + 56;
-    const rowGap = 54;
+    const valueX = panelX + 394;
+    const rowStartY = panelY + 64;
+    const rowGap = 48;
 
-    this.addPanel(container, panelX, panelY, 460, 308, this.t('options'));
+    this.addPanel(container, panelX, panelY, panelWidth, panelHeight, this.t('options'));
     container.add(
       this.add.text(labelX, rowStartY, this.t('language'), {
         color: colors.text,
@@ -308,24 +313,24 @@ export class TitleScene extends Phaser.Scene {
       container,
       valueX,
       rowStartY + 8,
-      104,
+      112,
       32,
       `${settings.language === 'ja' ? '> ' : ''}${this.t('japanese')}`,
       () => this.setLanguageFromOptions('ja'),
     );
     this.addActionButton(
       container,
-      valueX + 118,
+      valueX + 130,
       rowStartY + 8,
-      104,
+      112,
       32,
       `${settings.language === 'en' ? '> ' : ''}${this.t('english')}`,
       () => this.setLanguageFromOptions('en'),
     );
 
-    this.addVolumeRow(container, this.t('masterVolume'), 'masterVolume', rowStartY + rowGap);
-    this.addVolumeRow(container, this.t('sfxVolume'), 'sfxVolume', rowStartY + rowGap * 2);
-    this.addVolumeRow(container, this.t('musicVolume'), 'musicVolume', rowStartY + rowGap * 3);
+    this.addVolumeRow(container, this.t('masterVolume'), 'masterVolume', rowStartY + rowGap, labelX, valueX);
+    this.addVolumeRow(container, this.t('sfxVolume'), 'sfxVolume', rowStartY + rowGap * 2, labelX, valueX);
+    this.addVolumeRow(container, this.t('musicVolume'), 'musicVolume', rowStartY + rowGap * 3, labelX, valueX);
 
     container.add(
       this.add.text(labelX, rowStartY + rowGap * 4, this.t('muted'), {
@@ -343,13 +348,20 @@ export class TitleScene extends Phaser.Scene {
       settings.muted ? this.t('on') : this.t('off'),
       () => this.toggleMutedFromOptions(),
     );
-    this.addActionButton(container, panelX + 70, panelY + 268, 118, 34, this.t('back'), () => this.setMode('main'));
+    this.addActionButton(container, panelX + 88, panelY + panelHeight - 42, 132, 34, this.t('back'), () => this.setMode('main'));
   }
 
   private renderRecords(container: Phaser.GameObjects.Container): void {
     const stats = this.totalStatsSystem.snapshot;
-    const panelX = 240;
-    const panelY = 96;
+    const panelX = this.scale.width * 0.5 - 270;
+    const panelY = 132;
+    const panelWidth = 540;
+    const panelHeight = 370;
+    const viewportX = panelX + 30;
+    const viewportY = panelY + 68;
+    const viewportWidth = panelWidth - 60;
+    const viewportHeight = panelHeight - 128;
+    const rowGap = 29;
     const rows: Array<[LocalizationKey, string]> = [
       ['totalRuns', String(stats.totalRuns)],
       ['totalPlayTime', this.formatPlayTime(stats.totalPlayTimeMs)],
@@ -363,22 +375,33 @@ export class TitleScene extends Phaser.Scene {
       ['bestScore', String(stats.bestScore)],
       ['totalScore', String(stats.totalScore)],
     ];
+    const contentHeight = rows.length * rowGap;
 
-    this.addPanel(container, panelX, panelY, 480, 432, this.t('totalRecords'));
+    this.recordsMaxScroll = Math.max(0, contentHeight - viewportHeight);
+    this.recordsScrollOffset = Phaser.Math.Clamp(this.recordsScrollOffset, 0, this.recordsMaxScroll);
+    this.addPanel(container, panelX, panelY, panelWidth, panelHeight, this.t('totalRecords'));
 
+    const maskShape = this.add.graphics();
+    const contentContainer = this.add.container(0, -this.recordsScrollOffset);
+
+    maskShape.fillStyle(0xffffff, 1);
+    maskShape.fillRect(viewportX, viewportY, viewportWidth, viewportHeight);
+    maskShape.setVisible(false);
+    contentContainer.setMask(maskShape.createGeometryMask());
+    container.add([maskShape, contentContainer]);
     rows.forEach(([key, value], index) => {
-      const y = panelY + 64 + index * 31;
+      const y = viewportY + index * rowGap;
 
-      container.add(
-        this.add.text(panelX + 72, y, this.t(key), {
+      contentContainer.add(
+        this.add.text(viewportX + 42, y, this.t(key), {
           color: colors.mutedText,
           fontFamily: 'Arial, Helvetica, sans-serif',
           fontSize: '15px',
         }),
       );
-      container.add(
+      contentContainer.add(
         this.add
-          .text(panelX + 408, y, value, {
+          .text(viewportX + viewportWidth - 42, y, value, {
             color: colors.text,
             fontFamily: 'Consolas, "Courier New", monospace',
             fontSize: '15px',
@@ -387,7 +410,11 @@ export class TitleScene extends Phaser.Scene {
       );
     });
 
-    this.addActionButton(container, panelX + 72, panelY + 392, 118, 34, this.t('back'), () => this.setMode('main'));
+    if (this.recordsMaxScroll > 0) {
+      this.addScrollBar(container, panelX + panelWidth - 24, viewportY, viewportHeight, this.recordsScrollOffset, this.recordsMaxScroll);
+    }
+
+    this.addActionButton(container, panelX + 92, panelY + panelHeight - 42, 132, 34, this.t('back'), () => this.setMode('main'));
   }
 
   private addPanel(
@@ -416,14 +443,33 @@ export class TitleScene extends Phaser.Scene {
     );
   }
 
+  private addScrollBar(
+    container: Phaser.GameObjects.Container,
+    x: number,
+    y: number,
+    height: number,
+    scrollOffset: number,
+    maxScroll: number,
+  ): void {
+    const bar = this.add.graphics();
+    const thumbHeight = Math.max(34, height * 0.42);
+    const thumbY = y + (height - thumbHeight) * (scrollOffset / maxScroll);
+
+    bar.lineStyle(1, colors.coreStroke, 0.24);
+    bar.lineBetween(x, y, x, y + height);
+    bar.fillStyle(colors.pulseAccent, 0.58);
+    bar.fillRect(x - 2, thumbY, 4, thumbHeight);
+    container.add(bar);
+  }
+
   private addVolumeRow(
     container: Phaser.GameObjects.Container,
     label: string,
     settingKey: VolumeSettingKey,
     y: number,
+    labelX: number,
+    valueX: number,
   ): void {
-    const labelX = 320;
-    const valueX = 624;
     const currentValue = this.settingsSystem.snapshot[settingKey];
 
     container.add(
@@ -558,6 +604,32 @@ export class TitleScene extends Phaser.Scene {
       return;
     }
 
+    if (this.mode === 'records') {
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        this.scrollRecords(-32);
+        return;
+      }
+
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        this.scrollRecords(32);
+        return;
+      }
+
+      if (event.key === 'PageUp') {
+        event.preventDefault();
+        this.scrollRecords(-140);
+        return;
+      }
+
+      if (event.key === 'PageDown') {
+        event.preventDefault();
+        this.scrollRecords(140);
+        return;
+      }
+    }
+
     if (this.mode !== 'main') {
       return;
     }
@@ -580,6 +652,34 @@ export class TitleScene extends Phaser.Scene {
       this.audioSystem.playSelect();
       this.activateMainMenu(this.selectedIndex);
     }
+  }
+
+  private handleWheel(
+    _pointer: Phaser.Input.Pointer,
+    _gameObjects: Phaser.GameObjects.GameObject[],
+    _deltaX: number,
+    deltaY: number,
+  ): void {
+    if (this.mode !== 'records') {
+      return;
+    }
+
+    this.scrollRecords(deltaY * 0.35);
+  }
+
+  private scrollRecords(delta: number): void {
+    if (this.recordsMaxScroll <= 0) {
+      return;
+    }
+
+    const nextOffset = Phaser.Math.Clamp(this.recordsScrollOffset + delta, 0, this.recordsMaxScroll);
+
+    if (nextOffset === this.recordsScrollOffset) {
+      return;
+    }
+
+    this.recordsScrollOffset = nextOffset;
+    this.renderUi();
   }
 
   private activateMainMenu(index: number): void {
@@ -608,6 +708,8 @@ export class TitleScene extends Phaser.Scene {
     this.mode = mode;
     this.quitMessageVisible = false;
     this.selectedIndex = 0;
+    this.recordsScrollOffset = 0;
+    this.recordsMaxScroll = 0;
     this.renderUi();
   }
 
@@ -642,6 +744,8 @@ export class TitleScene extends Phaser.Scene {
 
   private shutdown(): void {
     this.input.keyboard?.off('keydown', this.handleKeyDown, this);
+    this.input.off('pointerdown', this.resumeAudio, this);
+    this.input.off('wheel', this.handleWheel, this);
   }
 
   private formatPercent(value: number): string {
