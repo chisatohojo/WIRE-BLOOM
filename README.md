@@ -145,6 +145,13 @@ Level UPメニューには現在の主要強化値として、Pulse Radius、Pul
 - Settings are saved in `localStorage` under `wireBloom.settings` and `wireBloom.language`.
 - UI text is routed through `src/systems/LocalizationSystem.ts` with strings in `src/config/localization.ts`.
 
+## Shockwave Tuning Note
+
+- Shockwave base radius is currently `48`, and `Shockwave Radius +` adds `6` each time.
+- Combo shockwave radius bonus is `+2.5%/combo`, capped by `combatTuning.maxShockwaveRadiusMultiplier`.
+- Shockwave visuals use a stronger outer ring, a subtle fill glow, an inner ring, and short wireframe spokes.
+- Visual emphasis values live in `effects.shockwaveRingDurationMs`, `effects.shockwaveRingAlpha`, `effects.shockwaveRingWidth`, and the `effects.shockwaveRing*` fields.
+
 ## GitHub
 
 https://github.com/chisatohojo/WIRE-BLOOM.git

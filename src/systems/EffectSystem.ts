@@ -279,11 +279,27 @@ export class EffectSystem {
       const eased = 1 - Math.pow(1 - ratio, 2);
       const radius = Phaser.Math.Linear(gameplayConfig.enemy.radius, ring.endRadius, eased);
       const alpha = ring.alpha * Math.pow(1 - ratio, 1.4);
+      const spokeStartRadius = radius * 0.72;
+      const spokeEndRadius = radius * 1.04;
 
+      this.pulseLayer.fillStyle(colors.enemyCore, alpha * gameplayConfig.effects.shockwaveRingGlowAlpha);
+      this.pulseLayer.fillCircle(ring.x, ring.y, radius);
       this.pulseLayer.lineStyle(ring.width, colors.enemyCore, alpha);
       this.pulseLayer.strokeCircle(ring.x, ring.y, radius);
-      this.pulseLayer.lineStyle(1, colors.enemyStroke, alpha * 0.45);
+      this.pulseLayer.lineStyle(1, colors.enemyStroke, alpha * gameplayConfig.effects.shockwaveRingInnerAlphaMultiplier);
       this.pulseLayer.strokeCircle(ring.x, ring.y, radius * 0.62);
+      this.pulseLayer.lineStyle(1, colors.particle, alpha * gameplayConfig.effects.shockwaveRingSpokeAlphaMultiplier);
+
+      for (let index = 0; index < gameplayConfig.effects.shockwaveRingSpokeCount; index += 1) {
+        const angle = (Math.PI * 2 * index) / gameplayConfig.effects.shockwaveRingSpokeCount + ratio * 0.28;
+
+        this.pulseLayer.lineBetween(
+          ring.x + Math.cos(angle) * spokeStartRadius,
+          ring.y + Math.sin(angle) * spokeStartRadius,
+          ring.x + Math.cos(angle) * spokeEndRadius,
+          ring.y + Math.sin(angle) * spokeEndRadius,
+        );
+      }
 
       return true;
     });
