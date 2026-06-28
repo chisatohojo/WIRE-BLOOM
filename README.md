@@ -137,8 +137,13 @@ Level UPメニューには現在の主要強化値として、Pulse Radius、Pul
 
 ## Pause / Settings / Stats
 
+- The game now starts on `TitleScene`. Choose Start Game to enter `GameScene`.
+- Title menu: Start Game, Options, Records, and Quit.
+- Options on the title screen uses the same saved language and volume settings as the pause menu.
+- Records shows total runs, total play time, best level, best combo, total enemies defeated, total pulses fired, total EXP collected, and total upgrades taken.
+- Total records are saved in `localStorage` under `wireBloom.totalStats`.
 - `Esc`: Open or close the pause menu. Gameplay movement, spawning, combo timers, pulse effects, and EXP orb updates stop while paused.
-- Pause menu: Resume, Settings, Stats, Restart, and Quit to Title. Quit to Title currently restarts the run until a title scene is added.
+- Pause menu: Resume, Settings, Stats, Restart, and Quit to Title. Restart and Quit to Title save the current run into total records once.
 - Settings: Change Language between Japanese and English, adjust Master / SFX / Music volume in 10% steps, and toggle Muted.
 - `M`: Toggle mute at any time. The pause menu mute display stays synced with this shortcut.
 - Stats: Shows current-run play time, level reached, max combo, enemies defeated, pulses fired, EXP collected, and upgrades taken.

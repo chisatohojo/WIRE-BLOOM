@@ -41,14 +41,14 @@ export class SettingsSystem {
 
   private loadSettings(): UserSettings {
     const settings = { ...settingsConfig.defaultSettings };
-    const savedLanguage = window.localStorage.getItem(settingsConfig.languageStorageKey);
+    const savedLanguage = this.readStoredValue(settingsConfig.languageStorageKey);
 
     if (this.isLanguage(savedLanguage)) {
       settings.language = savedLanguage;
     }
 
     try {
-      const rawSettings = window.localStorage.getItem(settingsConfig.storageKey);
+      const rawSettings = this.readStoredValue(settingsConfig.storageKey);
 
       if (!rawSettings) {
         return settings;
@@ -73,8 +73,20 @@ export class SettingsSystem {
   }
 
   private saveSettings(): void {
-    window.localStorage.setItem(settingsConfig.storageKey, JSON.stringify(this.settings));
-    window.localStorage.setItem(settingsConfig.languageStorageKey, this.settings.language);
+    try {
+      window.localStorage.setItem(settingsConfig.storageKey, JSON.stringify(this.settings));
+      window.localStorage.setItem(settingsConfig.languageStorageKey, this.settings.language);
+    } catch {
+      // localStorage can be unavailable in private or restricted browser contexts.
+    }
+  }
+
+  private readStoredValue(key: string): string | null {
+    try {
+      return window.localStorage.getItem(key);
+    } catch {
+      return null;
+    }
   }
 
   private readVolume(value: unknown, fallback: number): number {

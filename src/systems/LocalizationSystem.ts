@@ -22,7 +22,7 @@ export class LocalizationSystem {
   }
 
   private loadLanguage(): Language {
-    const savedLanguage = window.localStorage.getItem(settingsConfig.languageStorageKey);
+    const savedLanguage = this.readStoredLanguage();
 
     if (this.isLanguage(savedLanguage)) {
       return savedLanguage;
@@ -32,7 +32,19 @@ export class LocalizationSystem {
   }
 
   private saveLanguage(): void {
-    window.localStorage.setItem(settingsConfig.languageStorageKey, this.language);
+    try {
+      window.localStorage.setItem(settingsConfig.languageStorageKey, this.language);
+    } catch {
+      // localStorage can be unavailable in private or restricted browser contexts.
+    }
+  }
+
+  private readStoredLanguage(): string | null {
+    try {
+      return window.localStorage.getItem(settingsConfig.languageStorageKey);
+    } catch {
+      return null;
+    }
   }
 
   private isLanguage(value: string | null): value is Language {

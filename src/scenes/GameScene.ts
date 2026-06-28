@@ -8,6 +8,7 @@ import { EffectSystem } from '../systems/EffectSystem';
 import { LocalizationSystem } from '../systems/LocalizationSystem';
 import { RunStatsSystem } from '../systems/RunStatsSystem';
 import { SettingsSystem } from '../systems/SettingsSystem';
+import { TotalStatsSystem } from '../systems/TotalStatsSystem';
 
 type PulseStats = {
   chargeRatio: number;
@@ -69,6 +70,7 @@ export class GameScene extends Phaser.Scene {
   private localization!: LocalizationSystem;
   private settingsSystem!: SettingsSystem;
   private runStatsSystem!: RunStatsSystem;
+  private totalStatsSystem!: TotalStatsSystem;
   private audioSystem!: AudioSystem;
   private effectSystem!: EffectSystem;
   private enemySpawnTimer!: Phaser.Time.TimerEvent;
@@ -97,6 +99,7 @@ export class GameScene extends Phaser.Scene {
   private slowMotionTimeoutId: number | undefined;
   private slowMotionEndsAt = 0;
   private slowMotionRemainingMs = 0;
+  private hasSavedRunStats = false;
   private readonly handleWindowKeyDown = (event: KeyboardEvent): void => {
     if (event.key === 'Escape' || event.code === 'Escape') {
       this.togglePauseMenu(event);
@@ -115,6 +118,8 @@ export class GameScene extends Phaser.Scene {
     this.settingsSystem = new SettingsSystem();
     this.localization = new LocalizationSystem(this.settingsSystem.snapshot.language);
     this.runStatsSystem = new RunStatsSystem();
+    this.totalStatsSystem = new TotalStatsSystem();
+    this.hasSavedRunStats = false;
     this.audioSystem = new AudioSystem();
     this.audioSystem.setSettings(this.settingsSystem.snapshot);
     this.effectSystem = new EffectSystem(this);
@@ -1184,6 +1189,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private restartRun(): void {
+    this.saveCurrentRunStats();
+
     if (this.slowMotionTimeoutId !== undefined) {
       window.clearTimeout(this.slowMotionTimeoutId);
       this.slowMotionTimeoutId = undefined;
@@ -1196,8 +1203,26 @@ export class GameScene extends Phaser.Scene {
   }
 
   private quitToTitle(): void {
-    // TODO: Switch to a title scene when WIRE BLOOM gets one.
-    this.restartRun();
+    this.saveCurrentRunStats();
+
+    if (this.slowMotionTimeoutId !== undefined) {
+      window.clearTimeout(this.slowMotionTimeoutId);
+      this.slowMotionTimeoutId = undefined;
+    }
+
+    this.slowMotionEndsAt = 0;
+    this.slowMotionRemainingMs = 0;
+    this.tweens.resumeAll();
+    this.scene.start('TitleScene');
+  }
+
+  private saveCurrentRunStats(): void {
+    if (this.hasSavedRunStats) {
+      return;
+    }
+
+    this.totalStatsSystem.recordRun(this.runStatsSystem.snapshot);
+    this.hasSavedRunStats = true;
   }
 
   private formatPercent(value: number): string {

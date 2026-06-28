@@ -44,6 +44,26 @@ key: chooseUpgrade
 ja: 強化を選択
 en: Choose an upgrade
 
+key: startGame
+ja: ゲーム開始
+en: Start Game
+
+key: options
+ja: オプション
+en: Options
+
+key: records
+ja: 記録
+en: Records
+
+key: quit
+ja: 終了
+en: Quit
+
+key: quitMessage
+ja: ブラウザを閉じてください
+en: Please close the browser tab.
+
 key: back
 ja: 戻る
 en: Back
@@ -230,4 +250,40 @@ en: EXP Collected
 
 key: upgradesTaken
 ja: 取得アップグレード
+en: Upgrades Taken
+
+key: totalRecords
+ja: 累計記録
+en: Total Records
+
+key: totalRuns
+ja: プレイ回数
+en: Runs
+
+key: totalPlayTime
+ja: 累計プレイ時間
+en: Total Play Time
+
+key: bestLevel
+ja: 最高レベル
+en: Best Level
+
+key: bestCombo
+ja: 最大コンボ
+en: Best Combo
+
+key: totalEnemiesDefeated
+ja: 累計撃破数
+en: Enemies Defeated
+
+key: totalPulsesFired
+ja: 累計発射回数
+en: Pulses Fired
+
+key: totalExpCollected
+ja: 累計取得EXP
+en: EXP Collected
+
+key: totalUpgradesTaken
+ja: 累計アップグレード数
 en: Upgrades Taken
