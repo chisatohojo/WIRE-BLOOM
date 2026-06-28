@@ -161,6 +161,8 @@ export const gameplayConfig = {
     playTimeSecond: 2,
   },
   combo: {
+    comboPerEnemyDefeated: 1,
+    comboMissPenalty: 1,
     graceMs: 2200,
     shakeDurationMs: 90,
     screenShakeStrength: 0.0035,

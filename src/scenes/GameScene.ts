@@ -473,12 +473,12 @@ export class GameScene extends Phaser.Scene {
 
   private firePulse(chargeDuration: number): void {
     const pulse = this.getPulseStats(chargeDuration);
-    const comboAtFire = this.addCombo(1);
+    const comboAtFire = this.getActiveCombo();
 
     this.runStatsSystem.recordPulseFired();
     this.audioSystem.playPulse(pulse.chargeRatio);
     this.effectSystem.emitPulseCone(this.center.x, this.center.y, pulse.radius, pulse.chargeRatio, pulse.angle, pulse.angleWidth);
-    this.damageEnemiesInPulse(pulse, comboAtFire);
+    this.applyPulseComboResult(this.damageEnemiesInPulse(pulse, comboAtFire));
   }
 
   private spawnEnemy(): void {
@@ -659,9 +659,10 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
-  private damageEnemiesInPulse(pulse: PulseStats, comboAtFire: number): void {
+  private damageEnemiesInPulse(pulse: PulseStats, comboAtFire: number): number {
     const survivors: Enemy[] = [];
     const shockwaveQueue: Phaser.Math.Vector2[] = [];
+    let defeatedCount = 0;
 
     for (const enemy of this.enemies) {
       if (!this.isEnemyInsidePulseCone(enemy, pulse)) {
@@ -671,11 +672,15 @@ export class GameScene extends Phaser.Scene {
 
       if (!this.damageEnemy(enemy, pulse.damage, pulse.chargeRatio, shockwaveQueue)) {
         survivors.push(enemy);
+      } else {
+        defeatedCount += 1;
       }
     }
 
     this.enemies = survivors;
-    this.processShockwaveQueue(shockwaveQueue, comboAtFire);
+    defeatedCount += this.processShockwaveQueue(shockwaveQueue, comboAtFire);
+
+    return defeatedCount;
   }
 
   private isEnemyInsidePulseCone(enemy: Enemy, pulse: PulseStats): boolean {
@@ -710,8 +715,9 @@ export class GameScene extends Phaser.Scene {
     return false;
   }
 
-  private processShockwaveQueue(shockwaveQueue: Phaser.Math.Vector2[], comboAtFire: number): void {
+  private processShockwaveQueue(shockwaveQueue: Phaser.Math.Vector2[], comboAtFire: number): number {
     let processedCount = 0;
+    let defeatedCount = 0;
 
     while (
       shockwaveQueue.length > 0 &&
@@ -732,11 +738,15 @@ export class GameScene extends Phaser.Scene {
 
         if (!this.damageEnemy(enemy, gameplayConfig.shockwave.damage, 0.45, shockwaveQueue)) {
           survivors.push(enemy);
+        } else {
+          defeatedCount += 1;
         }
       }
 
       this.enemies = survivors;
     }
+
+    return defeatedCount;
   }
 
   private updateExpOrbs(delta: number): void {
@@ -789,10 +799,28 @@ export class GameScene extends Phaser.Scene {
     this.openLevelUpOverlay();
   }
 
-  private addCombo(comboGain: number): number {
+  private getActiveCombo(): number {
     if (this.combo > 0 && this.time.now >= this.comboExpiresAt) {
       this.combo = 0;
+      this.comboExpiresAt = 0;
+      this.updateComboText();
+      this.updateUpgradeStatusHud();
     }
+
+    return this.combo;
+  }
+
+  private applyPulseComboResult(defeatedCount: number): void {
+    if (defeatedCount > 0) {
+      this.addCombo(defeatedCount * gameplayConfig.combo.comboPerEnemyDefeated);
+      return;
+    }
+
+    this.applyComboMissPenalty();
+  }
+
+  private addCombo(comboGain: number): number {
+    this.getActiveCombo();
 
     const previousCombo = this.combo;
 
@@ -809,6 +837,23 @@ export class GameScene extends Phaser.Scene {
     }
 
     return this.combo;
+  }
+
+  private applyComboMissPenalty(): void {
+    this.getActiveCombo();
+
+    if (this.combo <= 0) {
+      this.updateComboText();
+      return;
+    }
+
+    this.combo = Math.max(0, this.combo - gameplayConfig.combo.comboMissPenalty);
+    if (this.combo <= 0) {
+      this.comboExpiresAt = 0;
+    }
+    this.updateComboText();
+    this.updateUpgradeStatusHud();
+    this.animateComboPenalty();
   }
 
   private shakeForCombo(previousCombo: number, comboGain: number): void {
@@ -846,6 +891,7 @@ export class GameScene extends Phaser.Scene {
   private updateCombo(time: number): void {
     if (this.combo > 0 && time >= this.comboExpiresAt) {
       this.combo = 0;
+      this.comboExpiresAt = 0;
       this.updateComboText();
       this.updateUpgradeStatusHud();
     }
@@ -857,12 +903,29 @@ export class GameScene extends Phaser.Scene {
 
   private animateComboText(): void {
     this.tweens.killTweensOf(this.comboText);
+    this.comboText.setAlpha(1);
+    this.comboText.setColor(colors.text);
     this.comboText.setScale(gameplayConfig.hud.comboPopScale);
     this.tweens.add({
       targets: this.comboText,
       scale: 1,
       duration: gameplayConfig.hud.comboPopDurationMs,
       ease: 'Back.easeOut',
+    });
+  }
+
+  private animateComboPenalty(): void {
+    this.tweens.killTweensOf(this.comboText);
+    this.comboText.setScale(0.96);
+    this.comboText.setAlpha(0.58);
+    this.comboText.setColor(colors.mutedText);
+    this.tweens.add({
+      targets: this.comboText,
+      alpha: 1,
+      scale: 1,
+      duration: 140,
+      ease: 'Sine.easeOut',
+      onComplete: () => this.comboText.setColor(colors.text),
     });
   }
 
