@@ -25,7 +25,19 @@ type TrailSegment = {
 type PulseRing = {
   x: number;
   y: number;
+  angle: number;
+  angleWidth: number;
   startRadius: number;
+  endRadius: number;
+  age: number;
+  life: number;
+  alpha: number;
+  width: number;
+};
+
+type ShockwaveRing = {
+  x: number;
+  y: number;
   endRadius: number;
   age: number;
   life: number;
@@ -50,6 +62,7 @@ export class EffectSystem {
   private particles: Particle[] = [];
   private trails: TrailSegment[] = [];
   private pulseRings: PulseRing[] = [];
+  private shockwaveRings: ShockwaveRing[] = [];
   private coreGlows: CoreGlow[] = [];
 
   constructor(scene: Phaser.Scene) {
@@ -64,6 +77,7 @@ export class EffectSystem {
     this.updateTrails(deltaMs);
     this.updateCoreGlows(deltaMs);
     this.updatePulseRings(deltaMs);
+    this.updateShockwaveRings(deltaMs);
   }
 
   emitEnemyBurst(x: number, y: number, chargeRatio: number, enemyWeight: number): void {
@@ -117,13 +131,15 @@ export class EffectSystem {
     });
   }
 
-  emitPulseRings(x: number, y: number, radius: number, chargeRatio: number): void {
+  emitPulseCone(x: number, y: number, radius: number, chargeRatio: number, angle: number, angleWidth: number): void {
     const ringCount = chargeRatio > 0.75 ? 4 : 3;
 
     for (let index = 0; index < ringCount; index += 1) {
       this.pulseRings.push({
         x,
         y,
+        angle,
+        angleWidth,
         startRadius: gameplayConfig.core.radius + index * gameplayConfig.effects.pulseRingStartStep,
         endRadius: radius + index * gameplayConfig.effects.pulseRingRadiusStep,
         age: -index * gameplayConfig.effects.pulseEchoDelayMs,
@@ -137,6 +153,20 @@ export class EffectSystem {
           (index === 0 ? chargeRatio * gameplayConfig.effects.pulseRingWidthChargeBoost : 0),
       });
     }
+  }
+
+  emitShockwaveRing(x: number, y: number, radius: number, combo: number): void {
+    const comboScale = Phaser.Math.Clamp(combo / 40, 0, 1);
+
+    this.shockwaveRings.push({
+      x,
+      y,
+      endRadius: radius,
+      age: 0,
+      life: gameplayConfig.effects.shockwaveRingDurationMs,
+      alpha: gameplayConfig.effects.shockwaveRingAlpha * (0.82 + comboScale * 0.18),
+      width: gameplayConfig.effects.shockwaveRingWidth + comboScale,
+    });
   }
 
   private updateParticles(deltaMs: number): void {
@@ -210,11 +240,50 @@ export class EffectSystem {
       const eased = 1 - Math.pow(1 - ratio, 3);
       const radius = Phaser.Math.Linear(ring.startRadius, ring.endRadius, eased);
       const alpha = Math.max(0, ring.alpha) * Math.pow(1 - ratio, 1.35);
+      const halfAngle = ring.angleWidth * 0.5;
+      const startAngle = ring.angle - halfAngle;
+      const endAngle = ring.angle + halfAngle;
 
       this.pulseLayer.lineStyle(ring.width, colors.pulse, alpha);
-      this.pulseLayer.strokeCircle(ring.x, ring.y, radius);
+      this.strokeArc(this.pulseLayer, ring.x, ring.y, radius, startAngle, endAngle);
+      this.pulseLayer.lineStyle(1, colors.pulseAccent, alpha * 0.35);
+      this.pulseLayer.lineBetween(
+        ring.x,
+        ring.y,
+        ring.x + Math.cos(startAngle) * radius,
+        ring.y + Math.sin(startAngle) * radius,
+      );
+      this.pulseLayer.lineBetween(
+        ring.x,
+        ring.y,
+        ring.x + Math.cos(endAngle) * radius,
+        ring.y + Math.sin(endAngle) * radius,
+      );
       this.pulseLayer.lineStyle(1, colors.pulseAccent, alpha * gameplayConfig.effects.pulseRingInnerAlphaMultiplier);
-      this.pulseLayer.strokeCircle(ring.x, ring.y, radius * 0.72);
+      this.strokeArc(this.pulseLayer, ring.x, ring.y, radius * 0.72, startAngle, endAngle);
+
+      return true;
+    });
+  }
+
+  private updateShockwaveRings(deltaMs: number): void {
+    this.shockwaveRings = this.shockwaveRings.filter((ring) => {
+      ring.age += deltaMs;
+
+      const ratio = Phaser.Math.Clamp(ring.age / ring.life, 0, 1);
+
+      if (ratio >= 1) {
+        return false;
+      }
+
+      const eased = 1 - Math.pow(1 - ratio, 2);
+      const radius = Phaser.Math.Linear(gameplayConfig.enemy.radius, ring.endRadius, eased);
+      const alpha = ring.alpha * Math.pow(1 - ratio, 1.4);
+
+      this.pulseLayer.lineStyle(ring.width, colors.enemyCore, alpha);
+      this.pulseLayer.strokeCircle(ring.x, ring.y, radius);
+      this.pulseLayer.lineStyle(1, colors.enemyStroke, alpha * 0.45);
+      this.pulseLayer.strokeCircle(ring.x, ring.y, radius * 0.62);
 
       return true;
     });
@@ -266,6 +335,19 @@ export class EffectSystem {
 
       this.particleLayer.lineBetween(current.x, current.y, next.x, next.y);
     }
+  }
+
+  private strokeArc(
+    graphics: Phaser.GameObjects.Graphics,
+    x: number,
+    y: number,
+    radius: number,
+    startAngle: number,
+    endAngle: number,
+  ): void {
+    graphics.beginPath();
+    graphics.arc(x, y, radius, startAngle, endAngle, false);
+    graphics.strokePath();
   }
 
   private trimToLimit<T>(items: T[], limit: number): void {

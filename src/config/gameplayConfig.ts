@@ -49,11 +49,19 @@ export const gameplayConfig = {
   pulse: {
     baseRadius: 110,
     chargeRadiusMultiplier: 280 / 110,
+    angleDegrees: 30,
     minDamage: 1,
     maxDamage: 3,
     maxChargeMs: 1100,
     durationMs: 280,
     strokeWidth: 2,
+  },
+  shockwave: {
+    baseRadius: 36,
+    damage: 1,
+    comboRadiusBonusPerCombo: 0.02,
+    maxRadiusMultiplier: 2.5,
+    maxChainPerPulse: 50,
   },
   combo: {
     graceMs: 2200,
@@ -72,8 +80,10 @@ export const gameplayConfig = {
   },
   upgrades: {
     pulseRadiusMultiplier: 1.2,
+    pulseAngleBonusDegrees: 1,
     orbMagnetMultiplier: 1.3,
     comboGraceBonusMs: 1500,
+    shockwaveRadiusBonus: 4,
   },
   hud: {
     titleVisibleMs: 3000,
@@ -114,5 +124,8 @@ export const gameplayConfig = {
     pulseRingRadiusStep: 14,
     pulseRingStartStep: 8,
     pulseRingWidthChargeBoost: 1.3,
+    shockwaveRingDurationMs: 260,
+    shockwaveRingAlpha: 0.34,
+    shockwaveRingWidth: 1,
   },
 } as const;

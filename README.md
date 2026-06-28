@@ -30,9 +30,17 @@ npm.cmd run build
 
 - `Space` または左クリック長押し: パルスをチャージ
 - 入力を離す: パルス発射
-- Level UP メニュー: クリック、または `1` / `2` / `3` で強化を選択
+- Level UP メニュー: クリック、または `1`〜`5` で強化を選択
 - `F3`: デバッグ表示の表示/非表示を切り替え
 - `M`: サウンドのミュート/解除を切り替え
+
+## 攻撃とコンボ
+
+パルス攻撃は全周囲ではなく、中央コアからマウスカーソル方向へ撃つ扇形攻撃です。初期角度幅は30°で、中心角から左右15°以内、かつパルス半径内にいる敵へヒットします。角度判定は0°/360°またぎに対応しています。
+
+コンボは敵撃破数ではなく、1回のチャージ/発射ごとに+1されます。空撃ちでもパルスを発射した場合はコンボが増えます。
+
+敵がパルスで倒されると、その敵の位置から小さな円形ショックウェーブが発生します。ショックウェーブ内の敵にもダメージが入り、倒れた敵からさらに連鎖します。連鎖上限と半径倍率は `src/config/gameplayConfig.ts` で調整できます。
 
 ## デバッグ表示
 
@@ -70,6 +78,12 @@ npm.cmd run build
 - `enemy.speedMin` / `enemy.speedMax`: 敵の移動速度レンジ
 - `pulse.baseRadius`: パルスの基本半径
 - `pulse.chargeRadiusMultiplier`: 最大チャージ時のパルス半径倍率
+- `pulse.angleDegrees`: 扇形パルスの初期角度幅
+- `shockwave.baseRadius`: 敵撃破時ショックウェーブの基本半径
+- `shockwave.damage`: ショックウェーブのダメージ
+- `shockwave.comboRadiusBonusPerCombo`: コンボ1ごとのショックウェーブ半径倍率ボーナス
+- `shockwave.maxRadiusMultiplier`: ショックウェーブ半径倍率の上限
+- `shockwave.maxChainPerPulse`: 1回のパルス内で処理する最大ショックウェーブ連鎖数
 - `expOrb.magnetSpeed`: 経験値オーブがコアへ吸い寄せられる速度
 - `progression.baseExpToNextLevel`: レベル2に必要な経験値
 - `progression.expGrowthPerLevel`: レベルごとに増える必要経験値
@@ -84,6 +98,15 @@ npm.cmd run build
 - `effects.enemyFlashDurationMs`: 敵撃破フラッシュ時間
 - `effects.coreAbsorbGlowDurationMs`: EXP吸収時のコア発光時間
 - `expOrb.terminalAccelerationMultiplier`: EXPオーブ吸収終盤の加速量
+
+## Level UP
+
+Level UPメニューには現在の主要強化値として、Pulse Radius、Pulse Angle、Orb Magnet、Shockwave Radius、Combo Count を表示します。
+
+追加アップグレード:
+
+- `Pulse Angle +1°`: 扇形パルスの角度幅を1°広げます
+- `Shockwave Radius +`: 敵撃破時ショックウェーブの基本半径を広げます
 
 ## 現在の実装内容
 

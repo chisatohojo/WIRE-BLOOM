@@ -9,9 +9,11 @@ type PulseStats = {
   chargeRatio: number;
   damage: number;
   radius: number;
+  angle: number;
+  angleWidth: number;
 };
 
-type UpgradeId = 'pulseRadius' | 'orbMagnet' | 'comboGrace';
+type UpgradeId = 'pulseRadius' | 'pulseAngle' | 'orbMagnet' | 'shockwaveRadius' | 'comboGrace';
 
 type UpgradeChoice = {
   id: UpgradeId;
@@ -26,9 +28,19 @@ const UPGRADE_CHOICES: UpgradeChoice[] = [
     detail: 'Pulse blast radius grows wider.',
   },
   {
+    id: 'pulseAngle',
+    label: 'Pulse Angle +1°',
+    detail: 'Pulse cone opens slightly wider.',
+  },
+  {
     id: 'orbMagnet',
     label: 'Orb Magnet +30%',
     detail: 'EXP orbs fly into the core faster.',
+  },
+  {
+    id: 'shockwaveRadius',
+    label: 'Shockwave Radius +',
+    detail: 'Defeat shockwaves reach nearby enemies.',
   },
   {
     id: 'comboGrace',
@@ -61,7 +73,9 @@ export class GameScene extends Phaser.Scene {
   private level = 1;
   private expToNextLevel: number = gameplayConfig.progression.baseExpToNextLevel;
   private pulseRadiusMultiplier = 1;
+  private pulseAngleBonusDegrees = 0;
   private orbMagnetMultiplier = 1;
+  private shockwaveRadiusBonus = 0;
   private comboGraceBonusMs = 0;
   private debugVisible = false;
   private gameSpeed = 1;
@@ -226,25 +240,28 @@ export class GameScene extends Phaser.Scene {
 
     const pulse = this.getPulseStats(time - this.chargeStartedAt);
     const innerRadius = Phaser.Math.Linear(gameplayConfig.core.outerRadius + 10, pulse.radius, pulse.chargeRatio);
+    const halfAngle = pulse.angleWidth * 0.5;
+    const startAngle = pulse.angle - halfAngle;
+    const endAngle = pulse.angle + halfAngle;
 
     this.chargeRing.clear();
     this.chargeRing.setPosition(this.center.x, this.center.y);
     this.chargeRing.lineStyle(1 + pulse.damage * 0.4, colors.pulseAccent, 0.32 + pulse.chargeRatio * 0.46);
-    this.chargeRing.strokeCircle(0, 0, innerRadius);
+    this.strokeArc(this.chargeRing, 0, 0, innerRadius, startAngle, endAngle);
+    this.chargeRing.lineStyle(1, colors.coreStroke, 0.18 + pulse.chargeRatio * 0.18);
+    this.chargeRing.lineBetween(0, 0, Math.cos(startAngle) * innerRadius, Math.sin(startAngle) * innerRadius);
+    this.chargeRing.lineBetween(0, 0, Math.cos(endAngle) * innerRadius, Math.sin(endAngle) * innerRadius);
     this.chargeRing.lineStyle(1, colors.coreStroke, 0.2 + pulse.chargeRatio * 0.16);
-    this.chargeRing.strokeCircle(0, 0, innerRadius * 0.58);
+    this.strokeArc(this.chargeRing, 0, 0, innerRadius * 0.58, startAngle, endAngle);
   }
 
   private firePulse(chargeDuration: number): void {
     const pulse = this.getPulseStats(chargeDuration);
-    const defeatedCount = this.damageEnemiesInRadius(pulse);
+    const comboAtFire = this.addCombo(1);
 
     this.audioSystem.playPulse(pulse.chargeRatio);
-    this.effectSystem.emitPulseRings(this.center.x, this.center.y, pulse.radius, pulse.chargeRatio);
-
-    if (defeatedCount > 0) {
-      this.addCombo(defeatedCount);
-    }
+    this.effectSystem.emitPulseCone(this.center.x, this.center.y, pulse.radius, pulse.chargeRatio, pulse.angle, pulse.angleWidth);
+    this.damageEnemiesInPulse(pulse, comboAtFire);
   }
 
   private spawnEnemy(): void {
@@ -291,30 +308,83 @@ export class GameScene extends Phaser.Scene {
     this.enemies = survivors;
   }
 
-  private damageEnemiesInRadius(pulse: PulseStats): number {
+  private damageEnemiesInPulse(pulse: PulseStats, comboAtFire: number): void {
     const survivors: Enemy[] = [];
-    let defeatedCount = 0;
+    const shockwaveQueue: Phaser.Math.Vector2[] = [];
 
     for (const enemy of this.enemies) {
-      if (!enemy.isWithinRadius(this.center, pulse.radius + enemy.radius)) {
+      if (!this.isEnemyInsidePulseCone(enemy, pulse)) {
         survivors.push(enemy);
         continue;
       }
 
-      if (enemy.takeDamage(pulse.damage)) {
-        this.audioSystem.playHit();
-        this.effectSystem.emitEnemyBurst(enemy.x, enemy.y, pulse.chargeRatio, enemy.maxHealth);
-        this.expOrbs.push(new ExpOrb(this, enemy.x, enemy.y, enemy.expValue));
-        enemy.playDefeatFlash();
-        defeatedCount += 1;
-      } else {
-        this.effectSystem.emitEnemyBurst(enemy.x, enemy.y, pulse.chargeRatio * 0.35, 1);
+      if (!this.damageEnemy(enemy, pulse.damage, pulse.chargeRatio, shockwaveQueue)) {
         survivors.push(enemy);
       }
     }
 
     this.enemies = survivors;
-    return defeatedCount;
+    this.processShockwaveQueue(shockwaveQueue, comboAtFire);
+  }
+
+  private isEnemyInsidePulseCone(enemy: Enemy, pulse: PulseStats): boolean {
+    if (!enemy.isWithinRadius(this.center, pulse.radius + enemy.radius)) {
+      return false;
+    }
+
+    const enemyAngle = Phaser.Math.Angle.Between(this.center.x, this.center.y, enemy.x, enemy.y);
+    const angleDifference = Phaser.Math.Angle.Wrap(enemyAngle - pulse.angle);
+
+    return Math.abs(angleDifference) <= pulse.angleWidth * 0.5;
+  }
+
+  private damageEnemy(
+    enemy: Enemy,
+    damage: number,
+    burstChargeRatio: number,
+    shockwaveQueue: Phaser.Math.Vector2[],
+  ): boolean {
+    if (enemy.takeDamage(damage)) {
+      this.audioSystem.playHit();
+      this.effectSystem.emitEnemyBurst(enemy.x, enemy.y, burstChargeRatio, enemy.maxHealth);
+      this.expOrbs.push(new ExpOrb(this, enemy.x, enemy.y, enemy.expValue));
+      shockwaveQueue.push(new Phaser.Math.Vector2(enemy.x, enemy.y));
+      enemy.playDefeatFlash();
+
+      return true;
+    }
+
+    this.effectSystem.emitEnemyBurst(enemy.x, enemy.y, burstChargeRatio * 0.35, 1);
+    return false;
+  }
+
+  private processShockwaveQueue(shockwaveQueue: Phaser.Math.Vector2[], comboAtFire: number): void {
+    let processedCount = 0;
+
+    while (
+      shockwaveQueue.length > 0 &&
+      processedCount < gameplayConfig.shockwave.maxChainPerPulse
+    ) {
+      const source = shockwaveQueue.shift()!;
+      const radius = this.getShockwaveRadius(comboAtFire);
+      const survivors: Enemy[] = [];
+
+      processedCount += 1;
+      this.effectSystem.emitShockwaveRing(source.x, source.y, radius, comboAtFire);
+
+      for (const enemy of this.enemies) {
+        if (!enemy.isWithinRadius(source, radius + enemy.radius)) {
+          survivors.push(enemy);
+          continue;
+        }
+
+        if (!this.damageEnemy(enemy, gameplayConfig.shockwave.damage, 0.45, shockwaveQueue)) {
+          survivors.push(enemy);
+        }
+      }
+
+      this.enemies = survivors;
+    }
   }
 
   private updateExpOrbs(delta: number): void {
@@ -358,23 +428,29 @@ export class GameScene extends Phaser.Scene {
     this.openLevelUpOverlay();
   }
 
-  private addCombo(defeatedCount: number): void {
+  private addCombo(comboGain: number): number {
+    if (this.combo > 0 && this.time.now >= this.comboExpiresAt) {
+      this.combo = 0;
+    }
+
     const previousCombo = this.combo;
 
-    this.combo += defeatedCount;
+    this.combo += comboGain;
     this.comboExpiresAt = this.time.now + gameplayConfig.combo.graceMs + this.comboGraceBonusMs;
     this.updateComboText();
     this.animateComboText();
     this.playComboMilestoneSound(previousCombo, this.combo);
-    this.shakeForCombo(previousCombo, defeatedCount);
+    this.shakeForCombo(previousCombo, comboGain);
 
     if (this.crossedComboMilestone(previousCombo, this.combo, gameplayConfig.combo.slowMotionEvery)) {
       this.triggerSlowMotion();
     }
+
+    return this.combo;
   }
 
-  private shakeForCombo(previousCombo: number, defeatedCount: number): void {
-    if (this.combo <= defeatedCount && defeatedCount <= 1) {
+  private shakeForCombo(previousCombo: number, comboGain: number): void {
+    if (this.combo <= comboGain && comboGain <= 1) {
       return;
     }
 
@@ -438,21 +514,33 @@ export class GameScene extends Phaser.Scene {
     this.enemySpawnTimer.paused = true;
 
     const { width, height } = this.scale;
+    const panelX = width * 0.5 - 380;
+    const panelY = 92;
+    const panelWidth = 760;
+    const panelHeight = 402;
+    const optionX = width * 0.5 - 190;
+    const optionWidth = 360;
+    const optionHeight = 42;
     const container = this.add.container(0, 0).setDepth(30);
     const backdrop = this.add.graphics();
     const panel = this.add.graphics();
+    const statsBox = this.add.graphics();
 
     backdrop.fillStyle(colors.overlayFill, gameplayConfig.levelUp.backdropAlpha);
     backdrop.fillRect(0, 0, width, height);
     panel.fillStyle(colors.overlayPanel, gameplayConfig.levelUp.panelAlpha);
-    panel.fillRect(width * 0.5 - 300, 132, 600, 298);
+    panel.fillRect(panelX, panelY, panelWidth, panelHeight);
     panel.lineStyle(1, colors.pulseAccent, 0.72);
-    panel.strokeRect(width * 0.5 - 300, 132, 600, 298);
+    panel.strokeRect(panelX, panelY, panelWidth, panelHeight);
+    statsBox.fillStyle(colors.background, 0.62);
+    statsBox.fillRect(width * 0.5 + 80, 202, 270, 168);
+    statsBox.lineStyle(1, colors.coreStroke, 0.34);
+    statsBox.strokeRect(width * 0.5 + 80, 202, 270, 168);
 
-    container.add([backdrop, panel]);
+    container.add([backdrop, panel, statsBox]);
     container.add(
       this.add
-        .text(width * 0.5, 166, 'LEVEL UP', {
+        .text(width * 0.5, panelY + 34, 'LEVEL UP', {
           color: colors.text,
           fontFamily: 'Arial, Helvetica, sans-serif',
           fontSize: '30px',
@@ -463,7 +551,7 @@ export class GameScene extends Phaser.Scene {
 
     container.add(
       this.add
-        .text(width * 0.5, 202, 'Choose a temporary upgrade', {
+        .text(width * 0.5, panelY + 70, 'Choose a temporary upgrade', {
           color: colors.mutedText,
           fontFamily: 'Arial, Helvetica, sans-serif',
           fontSize: '16px',
@@ -471,35 +559,44 @@ export class GameScene extends Phaser.Scene {
         .setOrigin(0.5),
     );
 
+    container.add(
+      this.add.text(width * 0.5 + 100, 216, this.getUpgradeStatusText(), {
+        color: colors.text,
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '14px',
+        lineSpacing: 7,
+      }),
+    );
+
     UPGRADE_CHOICES.forEach((choice, index) => {
-      const optionY = 256 + index * 62;
+      const optionY = 220 + index * 52;
       const optionBox = this.add.graphics();
       const optionZone = this.add
-        .zone(width * 0.5, optionY, 520, 48)
+        .zone(optionX, optionY, optionWidth, optionHeight)
         .setOrigin(0.5)
         .setInteractive({ useHandCursor: true });
 
       optionBox.fillStyle(colors.background, gameplayConfig.levelUp.optionFillAlpha);
-      optionBox.fillRect(width * 0.5 - 260, optionY - 24, 520, 48);
+      optionBox.fillRect(optionX - optionWidth * 0.5, optionY - optionHeight * 0.5, optionWidth, optionHeight);
       optionBox.lineStyle(1, colors.coreStroke, gameplayConfig.levelUp.optionStrokeAlpha);
-      optionBox.strokeRect(width * 0.5 - 260, optionY - 24, 520, 48);
+      optionBox.strokeRect(optionX - optionWidth * 0.5, optionY - optionHeight * 0.5, optionWidth, optionHeight);
 
       optionZone.on('pointerover', () => this.audioSystem.playUiHover());
       optionZone.on('pointerdown', () => this.applyUpgrade(choice.id));
 
       container.add([optionBox, optionZone]);
       container.add(
-        this.add.text(width * 0.5 - 236, optionY - 17, `${index + 1}. ${choice.label}`, {
+        this.add.text(optionX - optionWidth * 0.5 + 18, optionY - 15, `${index + 1}. ${choice.label}`, {
           color: colors.text,
           fontFamily: 'Arial, Helvetica, sans-serif',
-          fontSize: '17px',
+          fontSize: '15px',
         }),
       );
       container.add(
-        this.add.text(width * 0.5 - 236, optionY + 5, choice.detail, {
+        this.add.text(optionX - optionWidth * 0.5 + 18, optionY + 4, choice.detail, {
           color: colors.mutedText,
           fontFamily: 'Arial, Helvetica, sans-serif',
-          fontSize: '13px',
+          fontSize: '12px',
         }),
       );
     });
@@ -514,10 +611,18 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (event.key === '2') {
-      this.applyUpgrade('orbMagnet');
+      this.applyUpgrade('pulseAngle');
     }
 
     if (event.key === '3') {
+      this.applyUpgrade('orbMagnet');
+    }
+
+    if (event.key === '4') {
+      this.applyUpgrade('shockwaveRadius');
+    }
+
+    if (event.key === '5') {
       this.applyUpgrade('comboGrace');
     }
   }
@@ -533,8 +638,16 @@ export class GameScene extends Phaser.Scene {
       this.pulseRadiusMultiplier *= gameplayConfig.upgrades.pulseRadiusMultiplier;
     }
 
+    if (upgradeId === 'pulseAngle') {
+      this.pulseAngleBonusDegrees += gameplayConfig.upgrades.pulseAngleBonusDegrees;
+    }
+
     if (upgradeId === 'orbMagnet') {
       this.orbMagnetMultiplier *= gameplayConfig.upgrades.orbMagnetMultiplier;
+    }
+
+    if (upgradeId === 'shockwaveRadius') {
+      this.shockwaveRadiusBonus += gameplayConfig.upgrades.shockwaveRadiusBonus;
     }
 
     if (upgradeId === 'comboGrace') {
@@ -555,6 +668,16 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private getUpgradeStatusText(): string {
+    return [
+      `Pulse Radius: ${Math.round(this.getMaxPulseRadius())}`,
+      `Pulse Angle: ${this.getCurrentPulseAngleDegrees()}°`,
+      `Orb Magnet: x${this.orbMagnetMultiplier.toFixed(2)}`,
+      `Shockwave Radius: ${Math.round(this.getShockwaveRadius(this.combo))}`,
+      `Combo: ${this.combo}`,
+    ].join('\n');
+  }
+
   private getPulseStats(chargeDuration: number): PulseStats {
     const chargeRatio = this.getChargeRatio(chargeDuration);
     const maxRadius = gameplayConfig.pulse.baseRadius * gameplayConfig.pulse.chargeRadiusMultiplier;
@@ -566,6 +689,8 @@ export class GameScene extends Phaser.Scene {
     );
 
     return {
+      angle: this.getAimAngle(),
+      angleWidth: this.getPulseAngleRadians(),
       chargeRatio,
       damage,
       radius,
@@ -574,6 +699,52 @@ export class GameScene extends Phaser.Scene {
 
   private getChargeRatio(chargeDuration: number): number {
     return Phaser.Math.Clamp(chargeDuration / gameplayConfig.pulse.maxChargeMs, 0, 1);
+  }
+
+  private getAimAngle(): number {
+    const pointer = this.input.activePointer;
+    const distance = Phaser.Math.Distance.Between(this.center.x, this.center.y, pointer.x, pointer.y);
+
+    if (distance < 8) {
+      return -Math.PI / 2;
+    }
+
+    return Phaser.Math.Angle.Between(this.center.x, this.center.y, pointer.x, pointer.y);
+  }
+
+  private getCurrentPulseAngleDegrees(): number {
+    return gameplayConfig.pulse.angleDegrees + this.pulseAngleBonusDegrees;
+  }
+
+  private getPulseAngleRadians(): number {
+    return Phaser.Math.DegToRad(this.getCurrentPulseAngleDegrees());
+  }
+
+  private getMaxPulseRadius(): number {
+    return gameplayConfig.pulse.baseRadius * gameplayConfig.pulse.chargeRadiusMultiplier * this.pulseRadiusMultiplier;
+  }
+
+  private getShockwaveRadius(combo: number): number {
+    const baseRadius = gameplayConfig.shockwave.baseRadius + this.shockwaveRadiusBonus;
+    const comboMultiplier = Math.min(
+      gameplayConfig.shockwave.maxRadiusMultiplier,
+      1 + combo * gameplayConfig.shockwave.comboRadiusBonusPerCombo,
+    );
+
+    return baseRadius * comboMultiplier;
+  }
+
+  private strokeArc(
+    graphics: Phaser.GameObjects.Graphics,
+    x: number,
+    y: number,
+    radius: number,
+    startAngle: number,
+    endAngle: number,
+  ): void {
+    graphics.beginPath();
+    graphics.arc(x, y, radius, startAngle, endAngle, false);
+    graphics.strokePath();
   }
 
   private toggleDebugDisplay(event?: KeyboardEvent): void {
