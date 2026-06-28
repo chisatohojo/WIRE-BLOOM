@@ -27,7 +27,13 @@ export class ExpOrb extends Phaser.GameObjects.Graphics {
       return;
     }
 
-    const step = Math.min(distance, gameplayConfig.expOrb.magnetSpeed * magnetMultiplier * (deltaMs / 1000));
+    const terminalRatio =
+      1 - Phaser.Math.Clamp(distance / gameplayConfig.expOrb.terminalAccelerationDistance, 0, 1);
+    const terminalBoost =
+      1 +
+      Math.pow(terminalRatio, gameplayConfig.expOrb.terminalAccelerationPower) *
+        gameplayConfig.expOrb.terminalAccelerationMultiplier;
+    const step = Math.min(distance, gameplayConfig.expOrb.magnetSpeed * magnetMultiplier * terminalBoost * (deltaMs / 1000));
     const angle = Phaser.Math.Angle.Between(this.x, this.y, target.x, target.y);
 
     this.x += Math.cos(angle) * step;

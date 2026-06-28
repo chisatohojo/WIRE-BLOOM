@@ -59,6 +59,28 @@ export class Enemy extends Phaser.GameObjects.Graphics {
     return false;
   }
 
+  playDefeatFlash(): void {
+    const radius = this.radius;
+
+    this.clear();
+    this.fillStyle(colors.enemyCore, gameplayConfig.effects.enemyFlashFillAlpha);
+    this.fillCircle(0, 0, radius + 2);
+    this.lineStyle(2, colors.pulse, gameplayConfig.effects.enemyFlashStrokeAlpha);
+    this.strokeCircle(0, 0, radius + 6);
+    this.lineStyle(1, colors.coreStroke, gameplayConfig.effects.enemyFlashStrokeAlpha * 0.7);
+    this.lineBetween(-radius - 8, 0, radius + 8, 0);
+    this.lineBetween(0, -radius - 8, 0, radius + 8);
+
+    this.scene.tweens.add({
+      targets: this,
+      alpha: 0,
+      scale: gameplayConfig.effects.enemyFlashScale,
+      duration: gameplayConfig.effects.enemyFlashDurationMs,
+      ease: 'Quad.easeOut',
+      onComplete: () => this.destroy(),
+    });
+  }
+
   private draw(): void {
     const radius = this.radius;
     const healthRatio = this.health / this.maxHealth;

@@ -9,6 +9,9 @@ type Particle = {
   size: number;
   age: number;
   life: number;
+  rotation: number;
+  spin: number;
+  sides: number;
 };
 
 type TrailSegment = {
@@ -30,16 +33,28 @@ type PulseRing = {
   width: number;
 };
 
+type CoreGlow = {
+  x: number;
+  y: number;
+  age: number;
+  life: number;
+  radius: number;
+  alpha: number;
+};
+
 export class EffectSystem {
+  private readonly coreGlowLayer: Phaser.GameObjects.Graphics;
   private readonly particleLayer: Phaser.GameObjects.Graphics;
   private readonly trailLayer: Phaser.GameObjects.Graphics;
   private readonly pulseLayer: Phaser.GameObjects.Graphics;
   private particles: Particle[] = [];
   private trails: TrailSegment[] = [];
   private pulseRings: PulseRing[] = [];
+  private coreGlows: CoreGlow[] = [];
 
   constructor(scene: Phaser.Scene) {
     this.trailLayer = scene.add.graphics().setDepth(3);
+    this.coreGlowLayer = scene.add.graphics().setDepth(6.5);
     this.particleLayer = scene.add.graphics().setDepth(9);
     this.pulseLayer = scene.add.graphics().setDepth(8);
   }
@@ -47,6 +62,7 @@ export class EffectSystem {
   update(deltaMs: number): void {
     this.updateParticles(deltaMs);
     this.updateTrails(deltaMs);
+    this.updateCoreGlows(deltaMs);
     this.updatePulseRings(deltaMs);
   }
 
@@ -69,6 +85,9 @@ export class EffectSystem {
         size: Phaser.Math.FloatBetween(1.5, 3.4 + chargeRatio * 1.4),
         age: 0,
         life: gameplayConfig.effects.enemyBurstLifeMs * Phaser.Math.FloatBetween(0.75, 1.15),
+        rotation: angle,
+        spin: Phaser.Math.FloatBetween(-0.018, 0.018),
+        sides: Phaser.Math.Between(3, 4),
       });
     }
 
@@ -87,6 +106,17 @@ export class EffectSystem {
     this.trimToLimit(this.trails, gameplayConfig.effects.maxTrailSegments);
   }
 
+  emitCoreAbsorb(x: number, y: number, magnetMultiplier: number): void {
+    this.coreGlows.push({
+      x,
+      y,
+      age: 0,
+      life: gameplayConfig.effects.coreAbsorbGlowDurationMs,
+      radius: gameplayConfig.effects.coreAbsorbGlowRadius * Math.min(magnetMultiplier, 2),
+      alpha: gameplayConfig.effects.coreAbsorbGlowAlpha,
+    });
+  }
+
   emitPulseRings(x: number, y: number, radius: number, chargeRatio: number): void {
     const ringCount = chargeRatio > 0.75 ? 4 : 3;
 
@@ -94,12 +124,17 @@ export class EffectSystem {
       this.pulseRings.push({
         x,
         y,
-        startRadius: gameplayConfig.core.radius + index * 10,
-        endRadius: radius + index * 18,
+        startRadius: gameplayConfig.core.radius + index * gameplayConfig.effects.pulseRingStartStep,
+        endRadius: radius + index * gameplayConfig.effects.pulseRingRadiusStep,
         age: -index * gameplayConfig.effects.pulseEchoDelayMs,
-        life: gameplayConfig.effects.pulseRingDurationMs + index * 70,
-        alpha: 0.85 - index * 0.14 + chargeRatio * 0.12,
-        width: gameplayConfig.pulse.strokeWidth + (index === 0 ? chargeRatio * 2 : 0),
+        life: gameplayConfig.effects.pulseRingDurationMs + index * gameplayConfig.effects.pulseRingDurationStepMs,
+        alpha:
+          gameplayConfig.effects.pulseRingAlpha +
+          chargeRatio * gameplayConfig.effects.pulseRingChargeAlpha -
+          index * gameplayConfig.effects.pulseRingAlphaStep,
+        width:
+          gameplayConfig.pulse.strokeWidth +
+          (index === 0 ? chargeRatio * gameplayConfig.effects.pulseRingWidthChargeBoost : 0),
       });
     }
   }
@@ -112,19 +147,19 @@ export class EffectSystem {
       particle.age += deltaMs;
       particle.x += particle.vx * deltaSeconds;
       particle.y += particle.vy * deltaSeconds;
+      particle.rotation += particle.spin * deltaMs;
       particle.vx *= 0.975;
       particle.vy *= 0.975;
 
       const ratio = Phaser.Math.Clamp(particle.age / particle.life, 0, 1);
-      const alpha = 1 - ratio;
+      const alpha = (1 - ratio) * gameplayConfig.effects.enemyShardAlpha;
 
       if (ratio >= 1) {
         return false;
       }
 
-      this.particleLayer.fillStyle(colors.particle, alpha);
-      this.particleLayer.fillCircle(particle.x, particle.y, particle.size * (1 - ratio * 0.45));
-      this.particleLayer.lineStyle(1, colors.enemyStroke, alpha * 0.5);
+      this.drawShard(particle, ratio, alpha);
+      this.particleLayer.lineStyle(1, colors.enemyStroke, alpha * 0.28);
       this.particleLayer.lineBetween(
         particle.x,
         particle.y,
@@ -174,15 +209,63 @@ export class EffectSystem {
 
       const eased = 1 - Math.pow(1 - ratio, 3);
       const radius = Phaser.Math.Linear(ring.startRadius, ring.endRadius, eased);
-      const alpha = ring.alpha * (1 - ratio);
+      const alpha = Math.max(0, ring.alpha) * Math.pow(1 - ratio, 1.35);
 
       this.pulseLayer.lineStyle(ring.width, colors.pulse, alpha);
       this.pulseLayer.strokeCircle(ring.x, ring.y, radius);
-      this.pulseLayer.lineStyle(1, colors.pulseAccent, alpha * 0.5);
+      this.pulseLayer.lineStyle(1, colors.pulseAccent, alpha * gameplayConfig.effects.pulseRingInnerAlphaMultiplier);
       this.pulseLayer.strokeCircle(ring.x, ring.y, radius * 0.72);
 
       return true;
     });
+  }
+
+  private updateCoreGlows(deltaMs: number): void {
+    this.coreGlowLayer.clear();
+    this.coreGlows = this.coreGlows.filter((glow) => {
+      glow.age += deltaMs;
+
+      const ratio = Phaser.Math.Clamp(glow.age / glow.life, 0, 1);
+
+      if (ratio >= 1) {
+        return false;
+      }
+
+      const eased = 1 - Math.pow(1 - ratio, 2);
+      const radius = Phaser.Math.Linear(
+        gameplayConfig.core.radius,
+        glow.radius * gameplayConfig.effects.coreAbsorbGlowScale,
+        eased,
+      );
+      const alpha = glow.alpha * (1 - ratio);
+
+      this.coreGlowLayer.fillStyle(colors.coreStroke, alpha * 0.18);
+      this.coreGlowLayer.fillCircle(glow.x, glow.y, radius);
+      this.coreGlowLayer.lineStyle(1, colors.expStroke, alpha);
+      this.coreGlowLayer.strokeCircle(glow.x, glow.y, radius);
+
+      return true;
+    });
+  }
+
+  private drawShard(particle: Particle, ratio: number, alpha: number): void {
+    const points: Phaser.Math.Vector2[] = [];
+    const radius = particle.size * (1.2 - ratio * 0.35);
+
+    for (let index = 0; index < particle.sides; index += 1) {
+      const angle = particle.rotation + (Math.PI * 2 * index) / particle.sides;
+
+      points.push(new Phaser.Math.Vector2(particle.x + Math.cos(angle) * radius, particle.y + Math.sin(angle) * radius));
+    }
+
+    this.particleLayer.lineStyle(1, colors.particle, alpha);
+
+    for (let index = 0; index < points.length; index += 1) {
+      const current = points[index];
+      const next = points[(index + 1) % points.length];
+
+      this.particleLayer.lineBetween(current.x, current.y, next.x, next.y);
+    }
   }
 
   private trimToLimit<T>(items: T[], limit: number): void {

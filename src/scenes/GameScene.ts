@@ -41,6 +41,7 @@ export class GameScene extends Phaser.Scene {
   private core!: Phaser.GameObjects.Graphics;
   private chargeRing!: Phaser.GameObjects.Graphics;
   private spaceKey!: Phaser.Input.Keyboard.Key;
+  private titleText!: Phaser.GameObjects.Text;
   private comboText!: Phaser.GameObjects.Text;
   private expText!: Phaser.GameObjects.Text;
   private debugText!: Phaser.GameObjects.Text;
@@ -147,7 +148,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private addHud(): void {
-    this.add
+    this.titleText = this.add
       .text(this.scale.width * 0.5, 84, 'WIRE BLOOM', {
         color: colors.text,
         fontFamily: 'Arial, Helvetica, sans-serif',
@@ -155,6 +156,14 @@ export class GameScene extends Phaser.Scene {
         letterSpacing: 6,
       })
       .setOrigin(0.5);
+
+    this.tweens.add({
+      targets: this.titleText,
+      alpha: 0,
+      delay: gameplayConfig.hud.titleVisibleMs,
+      duration: gameplayConfig.hud.titleFadeMs,
+      ease: 'Sine.easeInOut',
+    });
 
     this.expText = this.add.text(24, 22, '', {
       color: colors.mutedText,
@@ -288,7 +297,7 @@ export class GameScene extends Phaser.Scene {
       if (enemy.takeDamage(pulse.damage)) {
         this.effectSystem.emitEnemyBurst(enemy.x, enemy.y, pulse.chargeRatio, enemy.maxHealth);
         this.expOrbs.push(new ExpOrb(this, enemy.x, enemy.y, enemy.expValue));
-        enemy.destroy();
+        enemy.playDefeatFlash();
         defeatedCount += 1;
       } else {
         this.effectSystem.emitEnemyBurst(enemy.x, enemy.y, pulse.chargeRatio * 0.35, 1);
@@ -309,6 +318,7 @@ export class GameScene extends Phaser.Scene {
 
       if (orb.isCollectedBy(this.center, this.orbMagnetMultiplier)) {
         this.effectSystem.emitOrbTrail(orb.x, orb.y, this.orbMagnetMultiplier * 1.6);
+        this.effectSystem.emitCoreAbsorb(this.center.x, this.center.y, this.orbMagnetMultiplier);
         this.gainExperience(orb.value);
         orb.destroy();
       } else {
@@ -344,6 +354,7 @@ export class GameScene extends Phaser.Scene {
     this.combo += defeatedCount;
     this.comboExpiresAt = this.time.now + gameplayConfig.combo.graceMs + this.comboGraceBonusMs;
     this.updateComboText();
+    this.animateComboText();
     this.shakeForCombo(previousCombo, defeatedCount);
 
     if (this.crossedComboMilestone(previousCombo, this.combo, gameplayConfig.combo.slowMotionEvery)) {
@@ -391,6 +402,17 @@ export class GameScene extends Phaser.Scene {
     this.comboText.setText(`COMBO x${this.combo}`);
   }
 
+  private animateComboText(): void {
+    this.tweens.killTweensOf(this.comboText);
+    this.comboText.setScale(gameplayConfig.hud.comboPopScale);
+    this.tweens.add({
+      targets: this.comboText,
+      scale: 1,
+      duration: gameplayConfig.hud.comboPopDurationMs,
+      ease: 'Back.easeOut',
+    });
+  }
+
   private updateExpText(): void {
     this.expText.setText(`LV ${this.level}  EXP ${this.experience}/${this.expToNextLevel}`);
   }
@@ -409,9 +431,9 @@ export class GameScene extends Phaser.Scene {
     const backdrop = this.add.graphics();
     const panel = this.add.graphics();
 
-    backdrop.fillStyle(colors.overlayFill, 0.84);
+    backdrop.fillStyle(colors.overlayFill, gameplayConfig.levelUp.backdropAlpha);
     backdrop.fillRect(0, 0, width, height);
-    panel.fillStyle(colors.overlayPanel, 0.94);
+    panel.fillStyle(colors.overlayPanel, gameplayConfig.levelUp.panelAlpha);
     panel.fillRect(width * 0.5 - 300, 132, 600, 298);
     panel.lineStyle(1, colors.pulseAccent, 0.72);
     panel.strokeRect(width * 0.5 - 300, 132, 600, 298);
@@ -446,9 +468,9 @@ export class GameScene extends Phaser.Scene {
         .setOrigin(0.5)
         .setInteractive({ useHandCursor: true });
 
-      optionBox.fillStyle(colors.background, 0.56);
+      optionBox.fillStyle(colors.background, gameplayConfig.levelUp.optionFillAlpha);
       optionBox.fillRect(width * 0.5 - 260, optionY - 24, 520, 48);
-      optionBox.lineStyle(1, colors.coreStroke, 0.42);
+      optionBox.lineStyle(1, colors.coreStroke, gameplayConfig.levelUp.optionStrokeAlpha);
       optionBox.strokeRect(width * 0.5 - 260, optionY - 24, 520, 48);
 
       optionZone.on('pointerdown', () => this.applyUpgrade(choice.id));

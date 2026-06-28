@@ -60,6 +60,14 @@ npm.cmd run build
 - `combo.graceMs`: コンボが継続する猶予時間
 - `combo.screenShakeStrength`: コンボ時の画面揺れの基本強度
 - `combo.slowMotionDurationMs`: コンボ節目で発生するスローモーション時間
+- `hud.titleVisibleMs` / `hud.titleFadeMs`: タイトル表示時間とフェード時間
+- `hud.comboPopScale` / `hud.comboPopDurationMs`: コンボ表示のスケール演出
+- `levelUp.backdropAlpha`: Level UP中の背景暗幕の濃さ
+- `effects.pulseRingDurationMs` / `effects.pulseRingAlpha`: パルスリングの余韻と透明度
+- `effects.enemyBurstParticles` / `effects.enemyShardAlpha`: 敵撃破破片の量と透明度
+- `effects.enemyFlashDurationMs`: 敵撃破フラッシュ時間
+- `effects.coreAbsorbGlowDurationMs`: EXP吸収時のコア発光時間
+- `expOrb.terminalAccelerationMultiplier`: EXPオーブ吸収終盤の加速量
 
 ## 現在の実装内容
 
