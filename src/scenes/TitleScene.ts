@@ -349,7 +349,7 @@ export class TitleScene extends Phaser.Scene {
   private renderRecords(container: Phaser.GameObjects.Container): void {
     const stats = this.totalStatsSystem.snapshot;
     const panelX = 240;
-    const panelY = 128;
+    const panelY = 96;
     const rows: Array<[LocalizationKey, string]> = [
       ['totalRuns', String(stats.totalRuns)],
       ['totalPlayTime', this.formatPlayTime(stats.totalPlayTimeMs)],
@@ -359,11 +359,12 @@ export class TitleScene extends Phaser.Scene {
       ['totalPulsesFired', String(stats.totalPulsesFired)],
       ['totalExpCollected', String(stats.totalExpCollected)],
       ['totalUpgradesTaken', String(stats.totalUpgradesTaken)],
+      ['totalHealsTaken', String(stats.totalHealsTaken)],
       ['bestScore', String(stats.bestScore)],
       ['totalScore', String(stats.totalScore)],
     ];
 
-    this.addPanel(container, panelX, panelY, 480, 400, this.t('totalRecords'));
+    this.addPanel(container, panelX, panelY, 480, 432, this.t('totalRecords'));
 
     rows.forEach(([key, value], index) => {
       const y = panelY + 64 + index * 31;
@@ -386,7 +387,7 @@ export class TitleScene extends Phaser.Scene {
       );
     });
 
-    this.addActionButton(container, panelX + 72, panelY + 360, 118, 34, this.t('back'), () => this.setMode('main'));
+    this.addActionButton(container, panelX + 72, panelY + 392, 118, 34, this.t('back'), () => this.setMode('main'));
   }
 
   private addPanel(

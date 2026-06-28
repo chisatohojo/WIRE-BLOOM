@@ -8,6 +8,7 @@ type Point = {
 
 export class ExpOrb extends Phaser.GameObjects.Graphics {
   readonly value: number;
+  private magnetized = false;
 
   constructor(scene: Phaser.Scene, x: number, y: number, value: number = gameplayConfig.expOrb.value) {
     super(scene);
@@ -18,6 +19,16 @@ export class ExpOrb extends Phaser.GameObjects.Graphics {
     this.draw();
 
     scene.add.existing(this);
+  }
+
+  updateMagnetized(target: Point, magnetRadius: number): boolean {
+    if (this.magnetized) {
+      return true;
+    }
+
+    this.magnetized = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y) <= magnetRadius;
+
+    return this.magnetized;
   }
 
   moveToward(target: Point, deltaMs: number, magnetMultiplier: number): void {

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type { Language, LocalizationKey } from '../config/localization';
 import { colors, gameplayConfig } from '../config/gameplayConfig';
+import { upgradeConfig, type UpgradeDefinition, type UpgradeId } from '../config/upgradeConfig';
 import { Enemy } from '../objects/Enemy';
 import { ExpOrb } from '../objects/ExpOrb';
 import { AudioSystem } from '../systems/AudioSystem';
@@ -16,14 +17,6 @@ type PulseStats = {
   radius: number;
   angle: number;
   angleWidth: number;
-};
-
-type UpgradeId = 'pulseRadius' | 'pulseAngle' | 'orbMagnet' | 'shockwaveRadius' | 'comboGrace';
-
-type UpgradeChoice = {
-  id: UpgradeId;
-  labelKey: LocalizationKey;
-  detailKey: LocalizationKey;
 };
 
 type PauseMenuMode = 'main' | 'settings' | 'stats';
@@ -44,34 +37,6 @@ type PlayerTrailSegment = {
   age: number;
   life: number;
 };
-
-const UPGRADE_CHOICES: UpgradeChoice[] = [
-  {
-    id: 'pulseRadius',
-    labelKey: 'pulseRadiusUpgrade',
-    detailKey: 'pulseRadiusUpgradeDetail',
-  },
-  {
-    id: 'pulseAngle',
-    labelKey: 'pulseAngleUpgrade',
-    detailKey: 'pulseAngleUpgradeDetail',
-  },
-  {
-    id: 'orbMagnet',
-    labelKey: 'orbMagnetUpgrade',
-    detailKey: 'orbMagnetUpgradeDetail',
-  },
-  {
-    id: 'shockwaveRadius',
-    labelKey: 'shockwaveRadiusUpgrade',
-    detailKey: 'shockwaveRadiusUpgradeDetail',
-  },
-  {
-    id: 'comboGrace',
-    labelKey: 'comboGraceUpgrade',
-    detailKey: 'comboGraceUpgradeDetail',
-  },
-];
 
 export class GameScene extends Phaser.Scene {
   private grid!: Phaser.GameObjects.Graphics;
@@ -107,10 +72,16 @@ export class GameScene extends Phaser.Scene {
   private level = 1;
   private expToNextLevel: number = gameplayConfig.progression.baseExpToNextLevel;
   private pulseRadiusMultiplier = 1;
+  private pulseDamageBonus = 0;
   private pulseAngleBonusDegrees = 0;
   private orbMagnetMultiplier = 1;
   private shockwaveRadiusBonus = 0;
+  private shockwaveComboBonusPerComboBonus = 0;
   private comboGraceBonusMs = 0;
+  private playerSpeedMultiplier = 1;
+  private playerMaxHp: number = gameplayConfig.player.maxHp;
+  private upgradeLevels: Partial<Record<UpgradeId, number>> = {};
+  private currentUpgradeChoices: UpgradeDefinition[] = [];
   private debugVisible = false;
   private isPaused = false;
   private isGameOver = false;
@@ -137,7 +108,7 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setBackgroundColor(colors.background);
-    this.center.set(this.scale.width * 0.5, this.scale.height * 0.5);
+    this.center.set(gameplayConfig.world.width * 0.5, gameplayConfig.world.height * 0.5);
 
     this.grid = this.add.graphics().setDepth(0);
     this.settingsSystem = new SettingsSystem();
@@ -146,10 +117,16 @@ export class GameScene extends Phaser.Scene {
     this.totalStatsSystem = new TotalStatsSystem();
     this.hasSavedRunStats = false;
     this.isGameOver = false;
-    this.playerHp = gameplayConfig.player.maxHp;
+    this.playerMaxHp = gameplayConfig.player.maxHp;
+    this.playerHp = this.playerMaxHp;
     this.invincibleUntil = 0;
     this.damageFlashUntil = 0;
     this.playerTrailSegments = [];
+    this.pulseDamageBonus = 0;
+    this.shockwaveComboBonusPerComboBonus = 0;
+    this.playerSpeedMultiplier = 1;
+    this.upgradeLevels = {};
+    this.currentUpgradeChoices = [];
     this.audioSystem = new AudioSystem();
     this.audioSystem.setSettings(this.settingsSystem.snapshot);
     this.effectSystem = new EffectSystem(this);
@@ -170,6 +147,7 @@ export class GameScene extends Phaser.Scene {
 
     this.drawGrid();
     this.drawCore();
+    this.setupCamera();
     this.addHud();
     this.input.keyboard!.on('keydown-F3', this.toggleDebugDisplay, this);
     this.input.keyboard!.on('keydown-M', this.toggleMute, this);
@@ -214,7 +192,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private drawGrid(): void {
-    const { width, height } = this.scale;
+    const width = gameplayConfig.world.width;
+    const height = gameplayConfig.world.height;
     const spacing = gameplayConfig.grid.spacing;
 
     this.grid.clear();
@@ -232,6 +211,11 @@ export class GameScene extends Phaser.Scene {
     this.grid.strokeRect(width * 0.25, height * 0.2, width * 0.5, height * 0.6);
     this.grid.lineBetween(width * 0.5, height * 0.12, width * 0.5, height * 0.88);
     this.grid.lineBetween(width * 0.12, height * 0.5, width * 0.88, height * 0.5);
+  }
+
+  private setupCamera(): void {
+    this.cameras.main.setBounds(0, 0, gameplayConfig.world.width, gameplayConfig.world.height);
+    this.cameras.main.startFollow(this.core, true, 0.12, 0.12);
   }
 
   private drawCore(): void {
@@ -252,10 +236,10 @@ export class GameScene extends Phaser.Scene {
     this.core.strokeCircle(0, 0, radius);
     this.core.lineStyle(1, strokeColor, 0.35);
     this.core.strokeCircle(0, 0, outerRadius);
-    this.core.lineBetween(-72, 0, -44, 0);
-    this.core.lineBetween(44, 0, 72, 0);
-    this.core.lineBetween(0, -72, 0, -44);
-    this.core.lineBetween(0, 44, 0, 72);
+    this.core.lineBetween(-outerRadius - 10, 0, -outerRadius - 2, 0);
+    this.core.lineBetween(outerRadius + 2, 0, outerRadius + 10, 0);
+    this.core.lineBetween(0, -outerRadius - 10, 0, -outerRadius - 2);
+    this.core.lineBetween(0, outerRadius + 2, 0, outerRadius + 10);
   }
 
   private addHud(): void {
@@ -266,7 +250,8 @@ export class GameScene extends Phaser.Scene {
         fontSize: '36px',
         letterSpacing: 6,
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setScrollFactor(0);
 
     this.tweens.add({
       targets: this.titleText,
@@ -280,13 +265,13 @@ export class GameScene extends Phaser.Scene {
       color: colors.mutedText,
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontSize: '18px',
-    });
+    }).setScrollFactor(0);
 
     this.hpText = this.add.text(24, 46, '', {
       color: colors.text,
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontSize: '18px',
-    });
+    }).setScrollFactor(0);
 
     this.comboText = this.add
       .text(this.scale.width - 24, 22, '', {
@@ -294,14 +279,15 @@ export class GameScene extends Phaser.Scene {
         fontFamily: 'Arial, Helvetica, sans-serif',
         fontSize: '22px',
       })
-      .setOrigin(1, 0);
+      .setOrigin(1, 0)
+      .setScrollFactor(0);
 
-    this.upgradeStatusText = this.add.text(24, this.scale.height - 104, '', {
+    this.upgradeStatusText = this.add.text(24, this.scale.height - 140, '', {
       color: colors.mutedText,
       fontFamily: 'Consolas, "Courier New", monospace',
       fontSize: '13px',
       lineSpacing: 3,
-    });
+    }).setScrollFactor(0);
     this.upgradeStatusText.setDepth(12);
 
     this.debugText = this.add
@@ -316,6 +302,7 @@ export class GameScene extends Phaser.Scene {
         },
       })
       .setDepth(40)
+      .setScrollFactor(0)
       .setVisible(false);
 
     this.updateExpText();
@@ -355,11 +342,11 @@ export class GameScene extends Phaser.Scene {
 
     direction.normalize();
 
-    const step = gameplayConfig.player.speed * (delta / 1000);
+    const step = gameplayConfig.player.speed * this.playerSpeedMultiplier * (delta / 1000);
     const margin = gameplayConfig.core.outerRadius;
 
-    this.center.x = Phaser.Math.Clamp(this.center.x + direction.x * step, margin, this.scale.width - margin);
-    this.center.y = Phaser.Math.Clamp(this.center.y + direction.y * step, margin, this.scale.height - margin);
+    this.center.x = Phaser.Math.Clamp(this.center.x + direction.x * step, margin, gameplayConfig.world.width - margin);
+    this.center.y = Phaser.Math.Clamp(this.center.y + direction.y * step, margin, gameplayConfig.world.height - margin);
     this.playerTrailSegments.push({
       x: this.center.x,
       y: this.center.y,
@@ -386,7 +373,7 @@ export class GameScene extends Phaser.Scene {
       }
 
       const alpha = (1 - ratio) * gameplayConfig.player.trailAlpha;
-      const radius = Phaser.Math.Linear(gameplayConfig.core.radius * 0.25, gameplayConfig.core.outerRadius, ratio);
+      const radius = Phaser.Math.Linear(gameplayConfig.core.radius * 0.4, gameplayConfig.core.outerRadius + 8, ratio);
 
       this.playerTrail.lineStyle(1, colors.coreStroke, alpha);
       this.playerTrail.strokeCircle(segment.x, segment.y, radius);
@@ -436,38 +423,34 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnEnemy(): void {
-    const spawnPoint = this.getRandomEdgePoint();
+    if (this.enemies.length >= gameplayConfig.enemy.maxEnemies) {
+      return;
+    }
+
+    const spawnPoint = this.getRandomSpawnPoint();
     const enemyType = this.getRandomEnemyType();
     const speed = Phaser.Math.FloatBetween(gameplayConfig.enemy.speedMin, gameplayConfig.enemy.speedMax);
 
     this.enemies.push(new Enemy(this, spawnPoint.x, spawnPoint.y, speed, enemyType));
   }
 
-  private getRandomEdgePoint(): Phaser.Math.Vector2 {
-    const { width, height } = this.scale;
+  private getRandomSpawnPoint(): Phaser.Math.Vector2 {
+    const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+    const distance = Phaser.Math.Between(gameplayConfig.enemy.spawnDistanceMin, gameplayConfig.enemy.spawnDistanceMax);
     const padding = gameplayConfig.enemy.spawnPadding;
-    const side = Phaser.Math.Between(0, 3);
+    const x = Phaser.Math.Clamp(this.center.x + Math.cos(angle) * distance, padding, gameplayConfig.world.width - padding);
+    const y = Phaser.Math.Clamp(this.center.y + Math.sin(angle) * distance, padding, gameplayConfig.world.height - padding);
 
-    if (side === 0) {
-      return new Phaser.Math.Vector2(Phaser.Math.Between(0, width), -padding);
-    }
-
-    if (side === 1) {
-      return new Phaser.Math.Vector2(width + padding, Phaser.Math.Between(0, height));
-    }
-
-    if (side === 2) {
-      return new Phaser.Math.Vector2(Phaser.Math.Between(0, width), height + padding);
-    }
-
-    return new Phaser.Math.Vector2(-padding, Phaser.Math.Between(0, height));
+    return new Phaser.Math.Vector2(x, y);
   }
 
   private updateEnemies(delta: number): void {
     const survivors: Enemy[] = [];
+    const spawnedByBoss: Enemy[] = [];
     const enemySpeedMultiplier = this.getEnemySpeedMultiplier();
 
     for (const enemy of this.enemies) {
+      this.updateBossSpawns(enemy, spawnedByBoss);
       enemy.moveToward(this.center, delta, enemySpeedMultiplier);
 
       if (this.handleEnemyContact(enemy)) {
@@ -475,14 +458,42 @@ export class GameScene extends Phaser.Scene {
         continue;
       }
 
-      if (enemy.isWithinRadius(this.center, gameplayConfig.enemy.removeRadius)) {
-        enemy.destroy();
-      } else {
-        survivors.push(enemy);
-      }
+      survivors.push(enemy);
     }
 
-    this.enemies = survivors;
+    this.enemies = [...survivors, ...spawnedByBoss];
+  }
+
+  private updateBossSpawns(enemy: Enemy, spawnedEnemies: Enemy[]): void {
+    if (
+      enemy.typeId !== 'boss' ||
+      enemy.childSpawnedCount >= gameplayConfig.enemy.maxSpawnedChildrenPerBoss ||
+      this.enemies.length + spawnedEnemies.length >= gameplayConfig.enemy.maxEnemies ||
+      this.time.now < enemy.nextChildSpawnAt
+    ) {
+      return;
+    }
+
+    const childType = this.getEnemyTypeById(gameplayConfig.enemy.bossSpawnEnemyType);
+    const spawnCount = Math.min(
+      gameplayConfig.enemy.bossSpawnCount,
+      gameplayConfig.enemy.maxEnemies - this.enemies.length - spawnedEnemies.length,
+      gameplayConfig.enemy.maxSpawnedChildrenPerBoss - enemy.childSpawnedCount,
+    );
+
+    for (let index = 0; index < spawnCount; index += 1) {
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const distance = enemy.radius + Phaser.Math.Between(20, 42);
+      const x = Phaser.Math.Clamp(enemy.x + Math.cos(angle) * distance, childType.radius, gameplayConfig.world.width - childType.radius);
+      const y = Phaser.Math.Clamp(enemy.y + Math.sin(angle) * distance, childType.radius, gameplayConfig.world.height - childType.radius);
+      const speed = Phaser.Math.FloatBetween(gameplayConfig.enemy.speedMin, gameplayConfig.enemy.speedMax);
+
+      spawnedEnemies.push(new Enemy(this, x, y, speed, childType));
+      enemy.childSpawnedCount += 1;
+    }
+
+    enemy.nextChildSpawnAt = this.time.now + gameplayConfig.enemy.bossSpawnIntervalMs;
+    this.effectSystem.emitShockwaveRing(enemy.x, enemy.y, enemy.radius + 38, 0);
   }
 
   private getRandomEnemyType(): (typeof gameplayConfig.enemy.types)[number] {
@@ -500,8 +511,12 @@ export class GameScene extends Phaser.Scene {
     return gameplayConfig.enemy.types[0];
   }
 
+  private getEnemyTypeById(typeId: string): (typeof gameplayConfig.enemy.types)[number] {
+    return gameplayConfig.enemy.types.find((enemyType) => enemyType.id === typeId) ?? gameplayConfig.enemy.types[0];
+  }
+
   private handleEnemyContact(enemy: Enemy): boolean {
-    const contactRadius = gameplayConfig.core.radius + enemy.radius;
+    const contactRadius = gameplayConfig.player.collisionRadius + enemy.radius;
 
     if (!enemy.isWithinRadius(this.center, contactRadius)) {
       return false;
@@ -620,10 +635,13 @@ export class GameScene extends Phaser.Scene {
 
   private updateExpOrbs(delta: number): void {
     const uncollected: ExpOrb[] = [];
+    const magnetRadius = this.getOrbMagnetRadius();
 
     for (const orb of this.expOrbs) {
-      orb.moveToward(this.center, delta, this.orbMagnetMultiplier);
-      this.effectSystem.emitOrbTrail(orb.x, orb.y, this.orbMagnetMultiplier);
+      if (orb.updateMagnetized(this.center, magnetRadius)) {
+        orb.moveToward(this.center, delta, this.orbMagnetMultiplier);
+        this.effectSystem.emitOrbTrail(orb.x, orb.y, this.orbMagnetMultiplier);
+      }
 
       if (orb.isCollectedBy(this.center, this.orbMagnetMultiplier)) {
         this.audioSystem.playOrb();
@@ -638,6 +656,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.expOrbs = uncollected;
+  }
+
+  private getOrbMagnetRadius(): number {
+    return gameplayConfig.expOrb.baseMagnetRadius * this.orbMagnetMultiplier;
   }
 
   private gainExperience(value: number): void {
@@ -743,7 +765,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateHpText(): void {
-    this.hpText.setText(`${this.t('hp')}: ${this.playerHp}/${gameplayConfig.player.maxHp}`);
+    this.hpText.setText(`${this.t('hp')}: ${this.playerHp}/${this.playerMaxHp}`);
   }
 
   private openLevelUpOverlay(): void {
@@ -763,6 +785,7 @@ export class GameScene extends Phaser.Scene {
     const optionX = width * 0.5 - 190;
     const optionWidth = 360;
     const optionHeight = 42;
+    const upgradeChoices = this.getLevelUpChoices();
     const container = this.add.container(0, 0).setDepth(30);
     const backdrop = this.add.graphics();
     const panel = this.add.graphics();
@@ -779,6 +802,8 @@ export class GameScene extends Phaser.Scene {
     statsBox.lineStyle(1, colors.coreStroke, 0.34);
     statsBox.strokeRect(width * 0.5 + 80, 202, 270, 168);
 
+    this.currentUpgradeChoices = upgradeChoices;
+    container.setScrollFactor(0);
     container.add([backdrop, panel, statsBox]);
     container.add(
       this.add
@@ -810,7 +835,7 @@ export class GameScene extends Phaser.Scene {
       }),
     );
 
-    UPGRADE_CHOICES.forEach((choice, index) => {
+    upgradeChoices.forEach((choice, index) => {
       const optionY = 220 + index * 52;
       const optionBox = this.add.graphics();
       const optionZone = this.add
@@ -828,14 +853,14 @@ export class GameScene extends Phaser.Scene {
 
       container.add([optionBox, optionZone]);
       container.add(
-        this.add.text(optionX - optionWidth * 0.5 + 18, optionY - 15, `${index + 1}. ${this.t(choice.labelKey)}`, {
+        this.add.text(optionX - optionWidth * 0.5 + 18, optionY - 15, `${index + 1}. ${this.t(choice.nameKey)}`, {
           color: colors.text,
           fontFamily: 'Arial, Helvetica, sans-serif',
           fontSize: '15px',
         }),
       );
       container.add(
-        this.add.text(optionX - optionWidth * 0.5 + 18, optionY + 4, this.t(choice.detailKey), {
+        this.add.text(optionX - optionWidth * 0.5 + 18, optionY + 4, this.t(choice.descriptionKey), {
           color: colors.mutedText,
           fontFamily: 'Arial, Helvetica, sans-serif',
           fontSize: '12px',
@@ -848,25 +873,51 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handleUpgradeKey(event: KeyboardEvent): void {
-    if (event.key === '1') {
-      this.applyUpgrade('pulseRadius');
+    const choiceIndex = Number(event.key) - 1;
+    const choice = this.currentUpgradeChoices[choiceIndex];
+
+    if (choice) {
+      this.applyUpgrade(choice.id);
+    }
+  }
+
+  private getLevelUpChoices(): UpgradeDefinition[] {
+    const availableChoices = upgradeConfig.definitions.filter((definition) => this.isUpgradeAvailable(definition));
+    const selectedChoices: UpgradeDefinition[] = [];
+    const pool = [...availableChoices];
+
+    while (selectedChoices.length < upgradeConfig.choicesPerLevel && pool.length > 0) {
+      const totalWeight = pool.reduce((sum, definition) => sum + definition.weight, 0);
+      let roll = Phaser.Math.Between(1, totalWeight);
+      let selectedIndex = 0;
+
+      for (let index = 0; index < pool.length; index += 1) {
+        roll -= pool[index].weight;
+
+        if (roll <= 0) {
+          selectedIndex = index;
+          break;
+        }
+      }
+
+      const [selectedChoice] = pool.splice(selectedIndex, 1);
+
+      selectedChoices.push(selectedChoice);
     }
 
-    if (event.key === '2') {
-      this.applyUpgrade('pulseAngle');
+    return selectedChoices;
+  }
+
+  private isUpgradeAvailable(definition: UpgradeDefinition): boolean {
+    if (definition.id === 'healHp' && this.playerHp >= this.playerMaxHp) {
+      return false;
     }
 
-    if (event.key === '3') {
-      this.applyUpgrade('orbMagnet');
+    if (definition.maxLevel === undefined) {
+      return true;
     }
 
-    if (event.key === '4') {
-      this.applyUpgrade('shockwaveRadius');
-    }
-
-    if (event.key === '5') {
-      this.applyUpgrade('comboGrace');
-    }
+    return (this.upgradeLevels[definition.id] ?? 0) < definition.maxLevel;
   }
 
   private applyUpgrade(upgradeId: UpgradeId): void {
@@ -876,12 +927,18 @@ export class GameScene extends Phaser.Scene {
 
     this.audioSystem.playSelect();
 
+    this.upgradeLevels[upgradeId] = (this.upgradeLevels[upgradeId] ?? 0) + 1;
+
     if (upgradeId === 'pulseRadius') {
       this.pulseRadiusMultiplier *= gameplayConfig.upgrades.pulseRadiusMultiplier;
     }
 
     if (upgradeId === 'pulseAngle') {
       this.pulseAngleBonusDegrees += gameplayConfig.combatTuning.pulseAngleUpgradeAmountDegrees;
+    }
+
+    if (upgradeId === 'pulseDamage') {
+      this.pulseDamageBonus += gameplayConfig.upgrades.pulseDamageBonus;
     }
 
     if (upgradeId === 'orbMagnet') {
@@ -892,19 +949,46 @@ export class GameScene extends Phaser.Scene {
       this.shockwaveRadiusBonus += gameplayConfig.combatTuning.shockwaveRadiusUpgradeAmount;
     }
 
+    if (upgradeId === 'shockwaveCombo') {
+      this.shockwaveComboBonusPerComboBonus += gameplayConfig.upgrades.shockwaveComboBonusPerComboBonus;
+    }
+
     if (upgradeId === 'comboGrace') {
       this.comboGraceBonusMs += gameplayConfig.upgrades.comboGraceBonusMs;
     }
 
+    if (upgradeId === 'playerSpeed') {
+      this.playerSpeedMultiplier *= gameplayConfig.upgrades.playerSpeedMultiplier;
+    }
+
+    if (upgradeId === 'maxHp') {
+      this.playerMaxHp += gameplayConfig.upgrades.maxHpBonus;
+      this.healPlayer(gameplayConfig.upgrades.maxHpBonus);
+    }
+
+    if (upgradeId === 'healHp') {
+      this.healPlayer(gameplayConfig.upgrades.healAmount);
+    }
+
     this.runStatsSystem.recordUpgradeTaken();
+    this.updateHpText();
     this.updateUpgradeStatusHud();
     this.closeLevelUpOverlay();
+  }
+
+  private healPlayer(amount: number): void {
+    const previousHp = this.playerHp;
+
+    this.playerHp = Math.min(this.playerMaxHp, this.playerHp + amount);
+    this.runStatsSystem.recordHealTaken(this.playerHp - previousHp);
+    this.effectSystem.emitCoreAbsorb(this.center.x, this.center.y, 1.2);
   }
 
   private closeLevelUpOverlay(): void {
     this.input.keyboard!.off('keydown', this.handleUpgradeKey, this);
     this.levelUpOverlay?.destroy(true);
     this.levelUpOverlay = null;
+    this.currentUpgradeChoices = [];
     this.enemySpawnTimer.paused = false;
 
     if (this.experience >= this.expToNextLevel) {
@@ -916,9 +1000,11 @@ export class GameScene extends Phaser.Scene {
     return [
       `${this.t('pulseRadius')}: ${Math.round(this.getMaxPulseRadius())}`,
       `${this.t('pulseAngle')}: ${this.getCurrentPulseAngleDegrees()}\u00b0`,
-      `${this.t('orbMagnet')}: x${this.orbMagnetMultiplier.toFixed(2)}`,
+      `${this.t('pulseDamage')}: ${gameplayConfig.pulse.minDamage + this.pulseDamageBonus}-${gameplayConfig.pulse.maxDamage + this.pulseDamageBonus}`,
+      `${this.t('orbMagnet')}: ${Math.round(this.getOrbMagnetRadius())} / x${this.orbMagnetMultiplier.toFixed(2)}`,
       `${this.t('shockwaveRadius')}: ${Math.round(this.getShockwaveRadius(this.combo))}`,
-      `${this.t('shockwaveComboBonus')}: +${Math.round(gameplayConfig.combatTuning.comboShockwaveRadiusBonusPerCombo * 100)}%/combo`,
+      `${this.t('shockwaveComboBonus')}: +${Math.round((gameplayConfig.combatTuning.comboShockwaveRadiusBonusPerCombo + this.shockwaveComboBonusPerComboBonus) * 100)}%/combo`,
+      `${this.t('playerSpeed')}: x${this.playerSpeedMultiplier.toFixed(2)}`,
     ].join('\n');
   }
 
@@ -938,7 +1024,7 @@ export class GameScene extends Phaser.Scene {
       this.pulseRadiusMultiplier;
     const damage = Math.round(
       Phaser.Math.Linear(gameplayConfig.pulse.minDamage, gameplayConfig.pulse.maxDamage, chargeRatio),
-    );
+    ) + this.pulseDamageBonus;
 
     return {
       angle: this.getAimAngle(),
@@ -955,13 +1041,15 @@ export class GameScene extends Phaser.Scene {
 
   private getAimAngle(): number {
     const pointer = this.input.activePointer;
-    const distance = Phaser.Math.Distance.Between(this.center.x, this.center.y, pointer.x, pointer.y);
+    const pointerWorldX = pointer.worldX;
+    const pointerWorldY = pointer.worldY;
+    const distance = Phaser.Math.Distance.Between(this.center.x, this.center.y, pointerWorldX, pointerWorldY);
 
     if (distance < 8) {
       return -Math.PI / 2;
     }
 
-    return Phaser.Math.Angle.Between(this.center.x, this.center.y, pointer.x, pointer.y);
+    return Phaser.Math.Angle.Between(this.center.x, this.center.y, pointerWorldX, pointerWorldY);
   }
 
   private getCurrentPulseAngleDegrees(): number {
@@ -980,7 +1068,7 @@ export class GameScene extends Phaser.Scene {
     const baseRadius = gameplayConfig.combatTuning.shockwaveBaseRadius + this.shockwaveRadiusBonus;
     const comboMultiplier = Math.min(
       gameplayConfig.combatTuning.maxShockwaveRadiusMultiplier,
-      1 + combo * gameplayConfig.combatTuning.comboShockwaveRadiusBonusPerCombo,
+      1 + combo * (gameplayConfig.combatTuning.comboShockwaveRadiusBonusPerCombo + this.shockwaveComboBonusPerComboBonus),
     );
 
     return baseRadius * comboMultiplier;
@@ -1024,7 +1112,7 @@ export class GameScene extends Phaser.Scene {
   private togglePauseMenu(event?: KeyboardEvent): void {
     event?.preventDefault();
 
-    if (this.levelUpOverlay) {
+    if (this.levelUpOverlay || this.isGameOver) {
       return;
     }
 
@@ -1037,7 +1125,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private openPauseMenu(mode: PauseMenuMode): void {
-    if (this.levelUpOverlay) {
+    if (this.levelUpOverlay || this.isGameOver) {
       return;
     }
 
@@ -1091,6 +1179,7 @@ export class GameScene extends Phaser.Scene {
     const panel = this.add.graphics();
     const titleKey = this.pauseMode === 'settings' ? 'settings' : this.pauseMode === 'stats' ? 'results' : 'title';
 
+    container.setScrollFactor(0);
     backdrop.fillStyle(colors.overlayFill, 0.78);
     backdrop.fillRect(0, 0, width, height);
     panel.fillStyle(colors.overlayPanel, 0.96);
@@ -1215,6 +1304,7 @@ export class GameScene extends Phaser.Scene {
       ['expCollected', String(stats.expCollected)],
       ['upgradesTaken', String(stats.upgradesTaken)],
       ['damageTaken', String(stats.damageTaken)],
+      ['healsTaken', String(stats.healsTaken)],
       ['score', String(stats.score)],
     ];
     const labelX = panelX + 92;
@@ -1271,12 +1361,14 @@ export class GameScene extends Phaser.Scene {
       ['pulsesFired', String(stats.pulsesFired)],
       ['expCollected', String(stats.expCollected)],
       ['upgradesTaken', String(stats.upgradesTaken)],
+      ['healsTaken', String(stats.healsTaken)],
       ['score', String(stats.score)],
     ];
     const container = this.add.container(0, 0).setDepth(90);
     const backdrop = this.add.graphics();
     const panel = this.add.graphics();
 
+    container.setScrollFactor(0);
     backdrop.fillStyle(colors.overlayFill, 0.86);
     backdrop.fillRect(0, 0, width, height);
     panel.fillStyle(colors.overlayPanel, 0.96);

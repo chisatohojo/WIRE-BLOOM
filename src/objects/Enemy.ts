@@ -14,6 +14,8 @@ export class Enemy extends Phaser.GameObjects.Graphics {
   readonly radius: number;
   readonly damageToPlayer: number;
   readonly typeId: EnemyTypeConfig['id'];
+  childSpawnedCount = 0;
+  nextChildSpawnAt = 0;
 
   private readonly speed: number;
   private readonly typeConfig: EnemyTypeConfig;
@@ -24,6 +26,7 @@ export class Enemy extends Phaser.GameObjects.Graphics {
 
     this.typeConfig = typeConfig;
     this.typeId = typeConfig.id;
+    this.nextChildSpawnAt = scene.time.now + gameplayConfig.enemy.bossSpawnIntervalMs;
     this.speed = speed * typeConfig.speedMultiplier;
     this.health = typeConfig.hp;
     this.maxHealth = typeConfig.hp;
@@ -106,6 +109,13 @@ export class Enemy extends Phaser.GameObjects.Graphics {
     this.lineBetween(0, -radius, 0, radius);
     this.lineStyle(1, this.typeConfig.strokeColor, 0.42);
     this.strokeCircle(0, 0, radius + 6);
+
+    if (this.typeId === 'boss') {
+      this.lineStyle(2, this.typeConfig.strokeColor, 0.52);
+      this.strokeCircle(0, 0, radius + 12);
+      this.lineStyle(1, this.typeConfig.coreColor, 0.38);
+      this.strokeCircle(0, 0, radius * 0.62);
+    }
 
     for (let index = 0; index < this.maxHealth; index += 1) {
       const angle = (Math.PI * 2 * index) / this.maxHealth - Math.PI / 2;

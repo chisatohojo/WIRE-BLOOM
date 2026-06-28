@@ -88,6 +88,14 @@ key: pulseDamage
 ja: パルス威力
 en: Pulse Damage
 
+key: pulseDamageDesc
+ja: パルスのダメージを上げる
+en: Increase pulse damage.
+
+key: boss
+ja: ボス
+en: Boss
+
 key: back
 ja: 戻る
 en: Back
@@ -116,6 +124,10 @@ key: orbMagnet
 ja: オーブ吸引
 en: Orb Magnet
 
+key: orbMagnetDesc
+ja: EXPオーブの吸引範囲を広げる
+en: Increase EXP orb magnet range.
+
 key: shockwaveRadius
 ja: ショックウェーブ範囲
 en: Shockwave Radius
@@ -123,6 +135,10 @@ en: Shockwave Radius
 key: shockwaveComboBonus
 ja: コンボ衝撃波補正
 en: Shockwave Combo Bonus
+
+key: shockwaveComboBonusDesc
+ja: コンボによるショックウェーブ拡大を強化する
+en: Increase combo scaling for shockwave radius.
 
 key: comboGrace
 ja: コンボ猶予
@@ -187,6 +203,30 @@ en: Combo Grace +1.5s
 key: comboGraceUpgradeDetail
 ja: コンボが切れるまでの時間が伸びる。
 en: Combo timer stays open longer.
+
+key: playerSpeed
+ja: 移動速度+
+en: Move Speed +
+
+key: playerSpeedDesc
+ja: 自機の移動速度を上げる
+en: Increase player movement speed.
+
+key: maxHp
+ja: 最大HP+
+en: Max HP +
+
+key: maxHpDesc
+ja: 最大HPを1増やし、HPも1回復する
+en: Increase max HP by 1 and restore 1 HP.
+
+key: healHp
+ja: HP回復
+en: Heal HP
+
+key: healHpDesc
+ja: 現在HPを1回復する
+en: Restore 1 current HP.
 
 ----------------------------------------
 Pause / Settings
@@ -276,6 +316,10 @@ key: upgradesTaken
 ja: 取得アップグレード
 en: Upgrades Taken
 
+key: healsTaken
+ja: 回復回数
+en: Heals Taken
+
 key: totalRecords
 ja: 累計記録
 en: Total Records
@@ -319,3 +363,7 @@ en: EXP Collected
 key: totalUpgradesTaken
 ja: 累計アップグレード数
 en: Upgrades Taken
+
+key: totalHealsTaken
+ja: 累計回復回数
+en: Total Heals Taken

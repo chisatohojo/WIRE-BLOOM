@@ -9,6 +9,7 @@ export type TotalStatsSnapshot = {
   totalPulsesFired: number;
   totalExpCollected: number;
   totalUpgradesTaken: number;
+  totalHealsTaken: number;
   bestScore: number;
   totalScore: number;
 };
@@ -24,6 +25,7 @@ const defaultStats: TotalStatsSnapshot = {
   totalPulsesFired: 0,
   totalExpCollected: 0,
   totalUpgradesTaken: 0,
+  totalHealsTaken: 0,
   bestScore: 0,
   totalScore: 0,
 };
@@ -48,6 +50,7 @@ export class TotalStatsSystem {
     this.stats.totalPulsesFired += Math.max(0, runStats.pulsesFired);
     this.stats.totalExpCollected += Math.max(0, runStats.expCollected);
     this.stats.totalUpgradesTaken += Math.max(0, runStats.upgradesTaken);
+    this.stats.totalHealsTaken += Math.max(0, runStats.healsTaken);
     this.stats.bestScore = Math.max(this.stats.bestScore, runStats.score);
     this.stats.totalScore += Math.max(0, runStats.score);
     this.saveStats();
@@ -74,6 +77,7 @@ export class TotalStatsSystem {
         totalPulsesFired: this.readCount(parsedStats.totalPulsesFired, defaultStats.totalPulsesFired),
         totalExpCollected: this.readCount(parsedStats.totalExpCollected, defaultStats.totalExpCollected),
         totalUpgradesTaken: this.readCount(parsedStats.totalUpgradesTaken, defaultStats.totalUpgradesTaken),
+        totalHealsTaken: this.readCount(parsedStats.totalHealsTaken, defaultStats.totalHealsTaken),
         bestScore: this.readCount(parsedStats.bestScore, defaultStats.bestScore),
         totalScore: this.readCount(parsedStats.totalScore, defaultStats.totalScore),
       };

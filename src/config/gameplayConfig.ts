@@ -21,10 +21,11 @@ export const colors = {
 
 export const gameplayConfig = {
   core: {
-    radius: 36,
-    outerRadius: 54,
+    radius: 10,
+    outerRadius: 18,
   },
   player: {
+    collisionRadius: 10,
     maxHp: 5,
     speed: 240,
     invincibilityMs: 900,
@@ -34,6 +35,10 @@ export const gameplayConfig = {
   },
   grid: {
     spacing: 32,
+  },
+  world: {
+    width: 2400,
+    height: 1600,
   },
   enemy: {
     radius: 12,
@@ -46,6 +51,13 @@ export const gameplayConfig = {
     speedGrowthPerSecond: 0.005,
     speedMaxMultiplier: 3,
     removeRadius: 30,
+    maxEnemies: 250,
+    spawnDistanceMin: 520,
+    spawnDistanceMax: 760,
+    bossSpawnIntervalMs: 2500,
+    bossSpawnCount: 2,
+    bossSpawnEnemyType: 'small',
+    maxSpawnedChildrenPerBoss: 20,
     types: [
       {
         id: 'small',
@@ -99,11 +111,25 @@ export const gameplayConfig = {
         coreColor: 0xe1d2ff,
         sides: 8,
       },
+      {
+        id: 'boss',
+        hp: 30,
+        speedMultiplier: 0.28,
+        radius: 32,
+        damageToPlayer: 3,
+        expValue: 30,
+        spawnWeight: 1,
+        strokeColor: 0xfff6a8,
+        fillColor: 0x241f08,
+        coreColor: 0xffffff,
+        sides: 8,
+      },
     ],
   },
   expOrb: {
     radius: 6,
     value: 1,
+    baseMagnetRadius: 80,
     magnetSpeed: 360,
     terminalAccelerationDistance: 170,
     terminalAccelerationMultiplier: 1.1,
@@ -148,6 +174,11 @@ export const gameplayConfig = {
     pulseRadiusMultiplier: 1.2,
     orbMagnetMultiplier: 1.3,
     comboGraceBonusMs: 1500,
+    pulseDamageBonus: 1,
+    shockwaveComboBonusPerComboBonus: 0.005,
+    playerSpeedMultiplier: 1.12,
+    maxHpBonus: 1,
+    healAmount: 1,
   },
   combatTuning: {
     pulseAngleInitialDegrees: 30,

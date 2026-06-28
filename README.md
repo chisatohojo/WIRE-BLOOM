@@ -28,21 +28,30 @@ npm.cmd run build
 
 ## 操作
 
+- `WASD` または矢印キー: プレイヤーコアを移動
 - `Space` または左クリック長押し: パルスをチャージ
 - 入力を離す: パルス発射
-- Level UP メニュー: クリック、または `1`〜`5` で強化を選択
+- Level UP メニュー: クリック、または `1`〜`3` で強化を選択
 - `F3`: デバッグ表示の表示/非表示を切り替え
 - `M`: サウンドのミュート/解除を切り替え
 
 ## 攻撃とコンボ
 
-パルス攻撃は全周囲ではなく、中央コアからマウスカーソル方向へ撃つ扇形攻撃です。初期角度幅は30°で、中心角から左右15°以内、かつパルス半径内にいる敵へヒットします。角度判定は0°/360°またぎに対応しています。
+パルス攻撃は全周囲ではなく、現在のプレイヤーコア位置からマウスカーソル方向へ撃つ扇形攻撃です。初期角度幅は30°で、中心角から左右15°以内、かつパルス半径内にいる敵へヒットします。角度判定は0°/360°またぎに対応しています。
 
 コンボは敵撃破数ではなく、1回のチャージ/発射ごとに+1されます。空撃ちでもパルスを発射した場合はコンボが増えます。
 
 敵がパルスで倒されると、その敵の位置から全方位の円形ショックウェーブが発生します。ショックウェーブ内の敵にもダメージが入り、倒れた敵からさらに連鎖します。連鎖上限と半径倍率は `src/config/gameplayConfig.ts` で調整できます。
 
 通常プレイ画面の左下にも、Pulse Radius、Pulse Angle、Orb Magnet、Shockwave Radius、Shockwave Combo Bonus の現在値を表示します。
+
+## ワールドと敵
+
+プレイフィールドは画面サイズより大きいワールドとして扱い、カメラがプレイヤーを追従します。プレイヤーはワールド外へ出ないようにクランプされ、敵の追跡、パルス、ショックウェーブ、EXPオーブもワールド座標で処理されます。
+
+敵はプレイヤー周辺の一定距離外に出現します。`boss` タイプは高HP・低速の大型ワイヤーフレーム敵で、一定間隔で小型敵を周囲に召喚します。召喚数と全体敵数には上限があり、ポーズ、Level UP、Game Over中は進行しません。
+
+EXPオーブは常に吸い込まれるのではなく、現在の Orb Magnet 範囲に入ってからコアへ向かいます。Orb Magnetアップグレードは吸引倍率と吸引範囲の両方を伸ばします。
 
 ## デバッグ表示
 
@@ -78,6 +87,13 @@ npm.cmd run build
 
 - `enemy.spawnIntervalMs`: 敵の出現間隔
 - `enemy.speedMin` / `enemy.speedMax`: 敵の移動速度レンジ
+- `enemy.maxEnemies`: 同時に存在できる敵の上限
+- `enemy.spawnDistanceMin` / `enemy.spawnDistanceMax`: プレイヤー周辺の敵出現距離
+- `enemy.bossSpawnIntervalMs` / `enemy.bossSpawnCount`: ボスの小型敵召喚ペースと数
+- `enemy.maxSpawnedChildrenPerBoss`: ボス1体あたりの召喚上限
+- `world.width` / `world.height`: プレイフィールドの広さ
+- `core.radius` / `core.outerRadius`: プレイヤーコアの描画サイズ
+- `player.collisionRadius`: プレイヤー接触判定半径
 - `pulse.baseRadius`: パルスの基本半径
 - `pulse.chargeRadiusMultiplier`: 最大チャージ時のパルス半径倍率
 - `combatTuning.pulseAngleInitialDegrees`: 扇形パルスの初期角度幅
@@ -89,6 +105,7 @@ npm.cmd run build
 - `combatTuning.maxShockwaveRadiusMultiplier`: ショックウェーブ半径倍率の上限
 - `combatTuning.maxShockwaveChainPerPulse`: 1回のパルス内で処理する最大ショックウェーブ連鎖数
 - `expOrb.magnetSpeed`: 経験値オーブがコアへ吸い寄せられる速度
+- `expOrb.baseMagnetRadius`: EXPオーブが吸引開始する基本範囲
 - `progression.baseExpToNextLevel`: レベル2に必要な経験値
 - `progression.expGrowthPerLevel`: レベルごとに増える必要経験値
 - `combo.graceMs`: コンボが継続する猶予時間
@@ -105,24 +122,33 @@ npm.cmd run build
 
 ## Level UP
 
-Level UPメニューには現在の主要強化値として、Pulse Radius、Pulse Angle、Orb Magnet、Shockwave Radius、Shockwave Combo Bonus を表示します。通常プレイ画面のアップグレード状況表示と同じ内容です。
+Level UPメニューには、強化候補全体からランダムに選ばれた重複なしの3択が表示されます。最大レベルに到達した強化は候補から外れ、Heal HP はHPが満タンの時には候補から外れます。強化定義は `src/config/upgradeConfig.ts` にまとめています。
+
+Level UPメニューには現在の主要強化値として、Pulse Radius、Pulse Angle、Pulse Damage、Orb Magnet、Shockwave Radius、Shockwave Combo Bonus、Move Speed を表示します。通常プレイ画面のアップグレード状況表示と同じ内容です。
 
 追加アップグレード:
 
 - `Pulse Angle +5°`: 扇形パルスの角度幅を5°広げます
 - `Shockwave Radius +`: 敵撃破時の全方位円形ショックウェーブの基本半径を広げます
+- `Pulse Damage`: パルスのダメージを上げます
+- `Shockwave Combo Bonus`: コンボによるショックウェーブ半径倍率を強化します
+- `Move Speed +`: プレイヤー移動速度を上げます
+- `Max HP +`: 最大HPを1増やし、現在HPも1回復します
+- `Heal HP`: 現在HPを1回復します
 
 ## 現在の実装内容
 
 - Phaser.Game の起動設定
 - ワイヤーフレーム風のゲーム画面
-- 中央のプレイヤーコア
-- 画面外から出現し、中央へ向かう敵
+- 小さくなった移動可能なプレイヤーコア
+- 画面より大きいワールドと追従カメラ
+- プレイヤー周辺に出現し、現在位置を追う敵
+- 小型敵を召喚するボス敵
 - チャージ量に応じたパルス半径とダメージ
-- 敵撃破時の経験値オーブ
+- 吸引範囲内に入るとコアへ向かう経験値オーブ
 - EXP、レベル、コンボHUD
 - コンボによる画面揺れと短いスローモーション
-- Level UP 時の5択アップグレード
+- Level UP 時のランダム3択アップグレード
 - F3デバッグ表示
 
 ## 今後の実装候補
@@ -140,13 +166,13 @@ Level UPメニューには現在の主要強化値として、Pulse Radius、Pul
 - The game now starts on `TitleScene`. Choose Start Game to enter `GameScene`.
 - Title menu: Start Game, Options, Records, and Quit.
 - Options on the title screen uses the same saved language and volume settings as the pause menu.
-- Records shows total runs, total play time, best level, best combo, total enemies defeated, total pulses fired, total EXP collected, and total upgrades taken.
+- Records shows total runs, total play time, best level, best combo, total enemies defeated, total pulses fired, total EXP collected, total upgrades taken, and total heals taken.
 - Total records are saved in `localStorage` under `wireBloom.totalStats`.
 - `Esc`: Open or close the pause menu. Gameplay movement, spawning, combo timers, pulse effects, and EXP orb updates stop while paused.
 - Pause menu: Resume, Settings, Stats, Restart, and Quit to Title. Restart and Quit to Title save the current run into total records once.
 - Settings: Change Language between Japanese and English, adjust Master / SFX / Music volume in 10% steps, and toggle Muted.
 - `M`: Toggle mute at any time. The pause menu mute display stays synced with this shortcut.
-- Stats: Shows current-run play time, level reached, max combo, enemies defeated, pulses fired, EXP collected, and upgrades taken.
+- Stats: Shows current-run play time, level reached, max combo, enemies defeated, pulses fired, EXP collected, upgrades taken, heals taken, and score.
 - Settings are saved in `localStorage` under `wireBloom.settings` and `wireBloom.language`.
 - UI text is routed through `src/systems/LocalizationSystem.ts` with strings in `src/config/localization.ts`.
 - Developer-facing localization reference: `docs/i18n_reference.txt`. Update it together with `src/config/localization.ts` when UI text changes.
@@ -155,10 +181,10 @@ Level UPメニューには現在の主要強化値として、Pulse Radius、Pul
 
 - Move the player core with `WASD` or the arrow keys. Pulse attacks, enemy tracking, and EXP orb magnet targets use the current player position.
 - Player HP starts at `5`. Enemy contact deals type-specific damage, briefly grants invincibility, flashes the core red, and removes the contacting enemy without EXP or shockwave rewards.
-- When HP reaches `0`, gameplay stops and a Game Over / Results panel shows play time, level reached, max combo, enemies defeated, pulses fired, EXP collected, upgrades taken, and score.
+- When HP reaches `0`, gameplay stops and a Game Over / Results panel shows play time, level reached, max combo, enemies defeated, pulses fired, EXP collected, upgrades taken, heals taken, and score.
 - Restart and Quit to Title save the run once into total records.
 - Enemy speed grows over time by `enemy.speedGrowthPerSecond` and is capped by `enemy.speedMaxMultiplier`; F3 debug shows the current enemy speed multiplier.
-- Enemy types are configured in `gameplayConfig.enemy.types`: small, normal, heavy, and tank have different HP, speed, damage, EXP, spawn weight, size, and color.
+- Enemy types are configured in `gameplayConfig.enemy.types`: small, normal, heavy, tank, and boss have different HP, speed, damage, EXP, spawn weight, size, and color.
 - Score uses `gameplayConfig.score`: enemies defeated, EXP collected, max combo, level reached, and play time seconds.
 
 ## Shockwave Tuning Note

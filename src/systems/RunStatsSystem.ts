@@ -9,6 +9,7 @@ export type RunStatsSnapshot = {
   expCollected: number;
   upgradesTaken: number;
   damageTaken: number;
+  healsTaken: number;
   score: number;
 };
 
@@ -22,6 +23,7 @@ export class RunStatsSystem {
     expCollected: 0,
     upgradesTaken: 0,
     damageTaken: 0,
+    healsTaken: 0,
   };
 
   get snapshot(): RunStatsSnapshot {
@@ -63,6 +65,12 @@ export class RunStatsSystem {
     this.stats.damageTaken += Math.max(0, damage);
   }
 
+  recordHealTaken(amount: number): void {
+    if (amount > 0) {
+      this.stats.healsTaken += 1;
+    }
+  }
+
   reset(): void {
     this.stats = {
       playTimeMs: 0,
@@ -73,6 +81,7 @@ export class RunStatsSystem {
       expCollected: 0,
       upgradesTaken: 0,
       damageTaken: 0,
+      healsTaken: 0,
     };
   }
 
