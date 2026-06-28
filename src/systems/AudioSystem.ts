@@ -1,4 +1,5 @@
 import { audioConfig } from '../config/audioConfig';
+import type { UserSettings } from '../config/settingsConfig';
 
 type WebAudioWindow = Window &
   typeof globalThis & {
@@ -18,6 +19,8 @@ export class AudioSystem {
   private context: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private muted: boolean = audioConfig.mutedByDefault;
+  private masterVolume: number = audioConfig.masterVolume;
+  private sfxVolume = 1;
   private orbSequence = 0;
   private lastOrbPlayedAt = 0;
   private lastHoverPlayedAt = 0;
@@ -44,6 +47,18 @@ export class AudioSystem {
     this.applyMasterVolume();
 
     return this.muted;
+  }
+
+  setMuted(muted: boolean): void {
+    this.muted = muted;
+    this.applyMasterVolume();
+  }
+
+  setSettings(settings: UserSettings): void {
+    this.masterVolume = settings.masterVolume;
+    this.sfxVolume = settings.sfxVolume;
+    this.muted = settings.muted;
+    this.applyMasterVolume();
   }
 
   playPulse(chargeRatio: number): void {
@@ -196,7 +211,7 @@ export class AudioSystem {
     }
 
     gain.gain.setValueAtTime(0, startAt);
-    gain.gain.linearRampToValueAtTime(options.volume, attackEnd);
+    gain.gain.linearRampToValueAtTime(options.volume * this.sfxVolume, attackEnd);
     gain.gain.linearRampToValueAtTime(0, endAt);
     oscillator.connect(gain);
     gain.connect(this.masterGain!);
@@ -227,7 +242,7 @@ export class AudioSystem {
 
     filter.type = 'highpass';
     filter.frequency.setValueAtTime(audioConfig.pulse.noiseFilterHz, startAt);
-    gain.gain.setValueAtTime(volume, startAt);
+    gain.gain.setValueAtTime(volume * this.sfxVolume, startAt);
     gain.gain.linearRampToValueAtTime(0, endAt);
     source.buffer = buffer;
     source.connect(filter);
@@ -269,6 +284,6 @@ export class AudioSystem {
       return;
     }
 
-    this.masterGain.gain.value = this.muted ? 0 : audioConfig.masterVolume;
+    this.masterGain.gain.value = this.muted ? 0 : this.masterVolume;
   }
 }

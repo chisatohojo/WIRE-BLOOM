@@ -135,6 +135,16 @@ Level UPメニューには現在の主要強化値として、Pulse Radius、Pul
 - Electron によるデスクトップアプリ化
 - Steam 配布を見据えたビルドフロー整備
 
+## Pause / Settings / Stats
+
+- `Esc`: Open or close the pause menu. Gameplay movement, spawning, combo timers, pulse effects, and EXP orb updates stop while paused.
+- Pause menu: Resume, Settings, Stats, Restart, and Quit to Title. Quit to Title currently restarts the run until a title scene is added.
+- Settings: Change Language between Japanese and English, adjust Master / SFX / Music volume in 10% steps, and toggle Muted.
+- `M`: Toggle mute at any time. The pause menu mute display stays synced with this shortcut.
+- Stats: Shows current-run play time, level reached, max combo, enemies defeated, pulses fired, EXP collected, and upgrades taken.
+- Settings are saved in `localStorage` under `wireBloom.settings` and `wireBloom.language`.
+- UI text is routed through `src/systems/LocalizationSystem.ts` with strings in `src/config/localization.ts`.
+
 ## GitHub
 
 https://github.com/chisatohojo/WIRE-BLOOM.git

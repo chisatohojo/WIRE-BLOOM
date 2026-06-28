@@ -1,9 +1,13 @@
 import Phaser from 'phaser';
+import type { Language, LocalizationKey } from '../config/localization';
 import { colors, gameplayConfig } from '../config/gameplayConfig';
 import { Enemy } from '../objects/Enemy';
 import { ExpOrb } from '../objects/ExpOrb';
 import { AudioSystem } from '../systems/AudioSystem';
 import { EffectSystem } from '../systems/EffectSystem';
+import { LocalizationSystem } from '../systems/LocalizationSystem';
+import { RunStatsSystem } from '../systems/RunStatsSystem';
+import { SettingsSystem } from '../systems/SettingsSystem';
 
 type PulseStats = {
   chargeRatio: number;
@@ -17,35 +21,38 @@ type UpgradeId = 'pulseRadius' | 'pulseAngle' | 'orbMagnet' | 'shockwaveRadius' 
 
 type UpgradeChoice = {
   id: UpgradeId;
-  label: string;
-  detail: string;
+  labelKey: LocalizationKey;
+  detailKey: LocalizationKey;
 };
+
+type PauseMenuMode = 'main' | 'settings' | 'stats';
+type VolumeSettingKey = 'masterVolume' | 'sfxVolume' | 'musicVolume';
 
 const UPGRADE_CHOICES: UpgradeChoice[] = [
   {
     id: 'pulseRadius',
-    label: 'Pulse Radius +20%',
-    detail: 'Pulse blast radius grows wider.',
+    labelKey: 'pulseRadiusUpgrade',
+    detailKey: 'pulseRadiusUpgradeDetail',
   },
   {
     id: 'pulseAngle',
-    label: 'Pulse Angle +5°',
-    detail: 'Pulse cone opens slightly wider.',
+    labelKey: 'pulseAngleUpgrade',
+    detailKey: 'pulseAngleUpgradeDetail',
   },
   {
     id: 'orbMagnet',
-    label: 'Orb Magnet +30%',
-    detail: 'EXP orbs fly into the core faster.',
+    labelKey: 'orbMagnetUpgrade',
+    detailKey: 'orbMagnetUpgradeDetail',
   },
   {
     id: 'shockwaveRadius',
-    label: 'Shockwave Radius +',
-    detail: 'Defeated enemies release a larger circular shockwave.',
+    labelKey: 'shockwaveRadiusUpgrade',
+    detailKey: 'shockwaveRadiusUpgradeDetail',
   },
   {
     id: 'comboGrace',
-    label: 'Combo Grace +1.5s',
-    detail: 'Combo timer stays open longer.',
+    labelKey: 'comboGraceUpgrade',
+    detailKey: 'comboGraceUpgradeDetail',
   },
 ];
 
@@ -59,10 +66,15 @@ export class GameScene extends Phaser.Scene {
   private expText!: Phaser.GameObjects.Text;
   private upgradeStatusText!: Phaser.GameObjects.Text;
   private debugText!: Phaser.GameObjects.Text;
+  private localization!: LocalizationSystem;
+  private settingsSystem!: SettingsSystem;
+  private runStatsSystem!: RunStatsSystem;
   private audioSystem!: AudioSystem;
   private effectSystem!: EffectSystem;
   private enemySpawnTimer!: Phaser.Time.TimerEvent;
   private levelUpOverlay: Phaser.GameObjects.Container | null = null;
+  private pauseOverlay: Phaser.GameObjects.Container | null = null;
+  private pauseMode: PauseMenuMode = 'main';
   private readonly center = new Phaser.Math.Vector2();
   private enemies: Enemy[] = [];
   private expOrbs: ExpOrb[] = [];
@@ -79,8 +91,12 @@ export class GameScene extends Phaser.Scene {
   private shockwaveRadiusBonus = 0;
   private comboGraceBonusMs = 0;
   private debugVisible = false;
+  private isPaused = false;
+  private pausedAt = 0;
   private gameSpeed = 1;
   private slowMotionTimeoutId: number | undefined;
+  private slowMotionEndsAt = 0;
+  private slowMotionRemainingMs = 0;
 
   constructor() {
     super('GameScene');
@@ -91,7 +107,11 @@ export class GameScene extends Phaser.Scene {
     this.center.set(this.scale.width * 0.5, this.scale.height * 0.5);
 
     this.grid = this.add.graphics().setDepth(0);
+    this.settingsSystem = new SettingsSystem();
+    this.localization = new LocalizationSystem(this.settingsSystem.snapshot.language);
+    this.runStatsSystem = new RunStatsSystem();
     this.audioSystem = new AudioSystem();
+    this.audioSystem.setSettings(this.settingsSystem.snapshot);
     this.effectSystem = new EffectSystem(this);
     this.core = this.add.graphics();
     this.chargeRing = this.add.graphics().setDepth(4);
@@ -100,6 +120,7 @@ export class GameScene extends Phaser.Scene {
     this.drawGrid();
     this.drawCore();
     this.addHud();
+    this.input.keyboard!.on('keydown-ESC', this.togglePauseMenu, this);
     this.input.keyboard!.on('keydown-F3', this.toggleDebugDisplay, this);
     this.input.keyboard!.on('keydown-M', this.toggleMute, this);
     this.input.keyboard!.on('keydown-SPACE', this.resumeAudio, this);
@@ -113,13 +134,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
-    this.effectSystem.update(delta);
     this.updateDebugDisplay(time);
     this.updateUpgradeStatusHud();
+
+    if (this.isPaused) {
+      return;
+    }
+
+    this.effectSystem.update(delta);
 
     if (this.levelUpOverlay) {
       return;
     }
+
+    this.runStatsSystem.updatePlayTime(delta);
 
     const scaledDelta = delta * this.gameSpeed;
 
@@ -171,7 +199,7 @@ export class GameScene extends Phaser.Scene {
 
   private addHud(): void {
     this.titleText = this.add
-      .text(this.scale.width * 0.5, 84, 'WIRE BLOOM', {
+      .text(this.scale.width * 0.5, 84, this.t('title'), {
         color: colors.text,
         fontFamily: 'Arial, Helvetica, sans-serif',
         fontSize: '36px',
@@ -194,7 +222,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.comboText = this.add
-      .text(this.scale.width - 24, 22, 'COMBO x0', {
+      .text(this.scale.width - 24, 22, '', {
         color: colors.text,
         fontFamily: 'Arial, Helvetica, sans-serif',
         fontSize: '22px',
@@ -224,6 +252,7 @@ export class GameScene extends Phaser.Scene {
       .setVisible(false);
 
     this.updateExpText();
+    this.updateComboText();
     this.updateUpgradeStatusHud();
   }
 
@@ -270,6 +299,7 @@ export class GameScene extends Phaser.Scene {
     const pulse = this.getPulseStats(chargeDuration);
     const comboAtFire = this.addCombo(1);
 
+    this.runStatsSystem.recordPulseFired();
     this.audioSystem.playPulse(pulse.chargeRatio);
     this.effectSystem.emitPulseCone(this.center.x, this.center.y, pulse.radius, pulse.chargeRatio, pulse.angle, pulse.angleWidth);
     this.damageEnemiesInPulse(pulse, comboAtFire);
@@ -356,6 +386,7 @@ export class GameScene extends Phaser.Scene {
     shockwaveQueue: Phaser.Math.Vector2[],
   ): boolean {
     if (enemy.takeDamage(damage)) {
+      this.runStatsSystem.recordEnemyDefeated();
       this.audioSystem.playHit();
       this.effectSystem.emitEnemyBurst(enemy.x, enemy.y, burstChargeRatio, enemy.maxHealth);
       this.expOrbs.push(new ExpOrb(this, enemy.x, enemy.y, enemy.expValue));
@@ -409,6 +440,7 @@ export class GameScene extends Phaser.Scene {
         this.audioSystem.playOrb();
         this.effectSystem.emitOrbTrail(orb.x, orb.y, this.orbMagnetMultiplier * 1.6);
         this.effectSystem.emitCoreAbsorb(this.center.x, this.center.y, this.orbMagnetMultiplier);
+        this.runStatsSystem.recordExpCollected(orb.value);
         this.gainExperience(orb.value);
         orb.destroy();
       } else {
@@ -434,6 +466,7 @@ export class GameScene extends Phaser.Scene {
     this.experience -= this.expToNextLevel;
     this.level += 1;
     this.expToNextLevel = this.getExpToNextLevel();
+    this.runStatsSystem.recordLevelReached(this.level);
     this.updateExpText();
     this.audioSystem.playLevelUp();
     this.openLevelUpOverlay();
@@ -448,6 +481,7 @@ export class GameScene extends Phaser.Scene {
 
     this.combo += comboGain;
     this.comboExpiresAt = this.time.now + gameplayConfig.combo.graceMs + this.comboGraceBonusMs;
+    this.runStatsSystem.recordCombo(this.combo);
     this.updateComboText();
     this.animateComboText();
     this.playComboMilestoneSound(previousCombo, this.combo);
@@ -478,6 +512,8 @@ export class GameScene extends Phaser.Scene {
 
   private triggerSlowMotion(): void {
     this.gameSpeed = gameplayConfig.combo.slowMotionScale;
+    this.slowMotionEndsAt = this.time.now + gameplayConfig.combo.slowMotionDurationMs;
+    this.slowMotionRemainingMs = 0;
 
     if (this.slowMotionTimeoutId !== undefined) {
       window.clearTimeout(this.slowMotionTimeoutId);
@@ -486,6 +522,7 @@ export class GameScene extends Phaser.Scene {
     this.slowMotionTimeoutId = window.setTimeout(() => {
       this.gameSpeed = 1;
       this.slowMotionTimeoutId = undefined;
+      this.slowMotionEndsAt = 0;
     }, gameplayConfig.combo.slowMotionDurationMs);
   }
 
@@ -498,7 +535,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateComboText(): void {
-    this.comboText.setText(`COMBO x${this.combo}`);
+    this.comboText.setText(`${this.t('combo')} x${this.combo}`);
   }
 
   private animateComboText(): void {
@@ -513,7 +550,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateExpText(): void {
-    this.expText.setText(`LV ${this.level}  EXP ${this.experience}/${this.expToNextLevel}`);
+    this.expText.setText(`${this.t('lv')} ${this.level}  ${this.t('exp')} ${this.experience}/${this.expToNextLevel}`);
   }
 
   private openLevelUpOverlay(): void {
@@ -552,7 +589,7 @@ export class GameScene extends Phaser.Scene {
     container.add([backdrop, panel, statsBox]);
     container.add(
       this.add
-        .text(width * 0.5, panelY + 34, 'LEVEL UP', {
+        .text(width * 0.5, panelY + 34, this.t('levelUp'), {
           color: colors.text,
           fontFamily: 'Arial, Helvetica, sans-serif',
           fontSize: '30px',
@@ -563,7 +600,7 @@ export class GameScene extends Phaser.Scene {
 
     container.add(
       this.add
-        .text(width * 0.5, panelY + 70, 'Choose a temporary upgrade', {
+        .text(width * 0.5, panelY + 70, this.t('chooseUpgrade'), {
           color: colors.mutedText,
           fontFamily: 'Arial, Helvetica, sans-serif',
           fontSize: '16px',
@@ -598,14 +635,14 @@ export class GameScene extends Phaser.Scene {
 
       container.add([optionBox, optionZone]);
       container.add(
-        this.add.text(optionX - optionWidth * 0.5 + 18, optionY - 15, `${index + 1}. ${choice.label}`, {
+        this.add.text(optionX - optionWidth * 0.5 + 18, optionY - 15, `${index + 1}. ${this.t(choice.labelKey)}`, {
           color: colors.text,
           fontFamily: 'Arial, Helvetica, sans-serif',
           fontSize: '15px',
         }),
       );
       container.add(
-        this.add.text(optionX - optionWidth * 0.5 + 18, optionY + 4, choice.detail, {
+        this.add.text(optionX - optionWidth * 0.5 + 18, optionY + 4, this.t(choice.detailKey), {
           color: colors.mutedText,
           fontFamily: 'Arial, Helvetica, sans-serif',
           fontSize: '12px',
@@ -666,6 +703,7 @@ export class GameScene extends Phaser.Scene {
       this.comboGraceBonusMs += gameplayConfig.upgrades.comboGraceBonusMs;
     }
 
+    this.runStatsSystem.recordUpgradeTaken();
     this.updateUpgradeStatusHud();
     this.closeLevelUpOverlay();
   }
@@ -683,11 +721,11 @@ export class GameScene extends Phaser.Scene {
 
   private getUpgradeStatusText(): string {
     return [
-      `Pulse Radius: ${Math.round(this.getMaxPulseRadius())}`,
-      `Pulse Angle: ${this.getCurrentPulseAngleDegrees()}°`,
-      `Orb Magnet: x${this.orbMagnetMultiplier.toFixed(2)}`,
-      `Shockwave Radius: ${Math.round(this.getShockwaveRadius(this.combo))}`,
-      `SW Combo: +${Math.round(gameplayConfig.combatTuning.comboShockwaveRadiusBonusPerCombo * 100)}%/combo`,
+      `${this.t('pulseRadius')}: ${Math.round(this.getMaxPulseRadius())}`,
+      `${this.t('pulseAngle')}: ${this.getCurrentPulseAngleDegrees()}\u00b0`,
+      `${this.t('orbMagnet')}: x${this.orbMagnetMultiplier.toFixed(2)}`,
+      `${this.t('shockwaveRadius')}: ${Math.round(this.getShockwaveRadius(this.combo))}`,
+      `${this.t('shockwaveComboBonus')}: +${Math.round(gameplayConfig.combatTuning.comboShockwaveRadiusBonusPerCombo * 100)}%/combo`,
     ].join('\n');
   }
 
@@ -777,11 +815,391 @@ export class GameScene extends Phaser.Scene {
 
   private toggleMute(event?: KeyboardEvent): void {
     event?.preventDefault();
-    this.audioSystem.toggleMute();
+    this.settingsSystem.toggleMuted();
+    this.applyUserSettings();
+    this.renderPauseOverlay();
   }
 
   private resumeAudio(): void {
     this.audioSystem.resume();
+  }
+
+  private togglePauseMenu(event?: KeyboardEvent): void {
+    event?.preventDefault();
+
+    if (this.levelUpOverlay) {
+      return;
+    }
+
+    if (this.isPaused) {
+      this.closePauseMenu();
+      return;
+    }
+
+    this.openPauseMenu('main');
+  }
+
+  private openPauseMenu(mode: PauseMenuMode): void {
+    if (this.levelUpOverlay) {
+      return;
+    }
+
+    if (!this.isPaused) {
+      this.isPaused = true;
+      this.pausedAt = this.time.now;
+      this.isCharging = false;
+      this.chargeRing.clear();
+      this.enemySpawnTimer.paused = true;
+      this.tweens.pauseAll();
+      this.pauseSlowMotionTimer();
+    }
+
+    this.pauseMode = mode;
+    this.renderPauseOverlay();
+  }
+
+  private closePauseMenu(): void {
+    if (!this.isPaused) {
+      return;
+    }
+
+    const pausedDuration = this.time.now - this.pausedAt;
+
+    if (this.comboExpiresAt > 0) {
+      this.comboExpiresAt += pausedDuration;
+    }
+
+    this.isPaused = false;
+    this.pauseOverlay?.destroy(true);
+    this.pauseOverlay = null;
+    this.enemySpawnTimer.paused = false;
+    this.resumeSlowMotionTimer();
+    this.tweens.resumeAll();
+  }
+
+  private renderPauseOverlay(): void {
+    if (!this.isPaused) {
+      return;
+    }
+
+    this.pauseOverlay?.destroy(true);
+
+    const { width, height } = this.scale;
+    const panelWidth = 560;
+    const panelHeight = this.pauseMode === 'main' ? 390 : 430;
+    const panelX = width * 0.5 - panelWidth * 0.5;
+    const panelY = height * 0.5 - panelHeight * 0.5;
+    const container = this.add.container(0, 0).setDepth(80);
+    const backdrop = this.add.graphics();
+    const panel = this.add.graphics();
+    const titleKey = this.pauseMode === 'settings' ? 'settings' : this.pauseMode === 'stats' ? 'results' : 'title';
+
+    backdrop.fillStyle(colors.overlayFill, 0.78);
+    backdrop.fillRect(0, 0, width, height);
+    panel.fillStyle(colors.overlayPanel, 0.96);
+    panel.fillRect(panelX, panelY, panelWidth, panelHeight);
+    panel.lineStyle(1, colors.pulseAccent, 0.76);
+    panel.strokeRect(panelX, panelY, panelWidth, panelHeight);
+    panel.lineStyle(1, colors.coreStroke, 0.22);
+    panel.strokeRect(panelX + 10, panelY + 10, panelWidth - 20, panelHeight - 20);
+
+    container.add([backdrop, panel]);
+    container.add(
+      this.add
+        .text(width * 0.5, panelY + 44, this.t(titleKey), {
+          color: colors.text,
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          fontSize: this.pauseMode === 'main' ? '28px' : '24px',
+          letterSpacing: this.pauseMode === 'main' ? 4 : 1,
+        })
+        .setOrigin(0.5),
+    );
+
+    if (this.pauseMode === 'main') {
+      this.renderPauseMain(container, width, panelY);
+    }
+
+    if (this.pauseMode === 'settings') {
+      this.renderSettingsMenu(container, panelX, panelY);
+    }
+
+    if (this.pauseMode === 'stats') {
+      this.renderStatsMenu(container, panelX, panelY);
+    }
+
+    this.pauseOverlay = container;
+  }
+
+  private renderPauseMain(container: Phaser.GameObjects.Container, width: number, panelY: number): void {
+    const buttonWidth = 280;
+    const buttonHeight = 42;
+    const startY = panelY + 108;
+    const gap = 52;
+
+    this.addMenuButton(container, width * 0.5, startY, buttonWidth, buttonHeight, this.t('resume'), () => this.closePauseMenu());
+    this.addMenuButton(container, width * 0.5, startY + gap, buttonWidth, buttonHeight, this.t('settings'), () =>
+      this.openPauseMenu('settings'),
+    );
+    this.addMenuButton(container, width * 0.5, startY + gap * 2, buttonWidth, buttonHeight, this.t('stats'), () =>
+      this.openPauseMenu('stats'),
+    );
+    this.addMenuButton(container, width * 0.5, startY + gap * 3, buttonWidth, buttonHeight, this.t('restart'), () =>
+      this.restartRun(),
+    );
+    this.addMenuButton(container, width * 0.5, startY + gap * 4, buttonWidth, buttonHeight, this.t('quitToTitle'), () =>
+      this.quitToTitle(),
+    );
+  }
+
+  private renderSettingsMenu(container: Phaser.GameObjects.Container, panelX: number, panelY: number): void {
+    const settings = this.settingsSystem.snapshot;
+    const labelX = panelX + 72;
+    const valueX = panelX + 324;
+    const rowStartY = panelY + 104;
+    const rowGap = 54;
+
+    container.add(
+      this.add.text(labelX, rowStartY, this.t('language'), {
+        color: colors.text,
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '16px',
+      }),
+    );
+    this.addMenuButton(
+      container,
+      valueX,
+      rowStartY + 8,
+      104,
+      32,
+      `${settings.language === 'ja' ? '> ' : ''}${this.t('japanese')}`,
+      () => this.setLanguageFromMenu('ja'),
+    );
+    this.addMenuButton(
+      container,
+      valueX + 118,
+      rowStartY + 8,
+      104,
+      32,
+      `${settings.language === 'en' ? '> ' : ''}${this.t('english')}`,
+      () => this.setLanguageFromMenu('en'),
+    );
+
+    this.addVolumeRow(container, this.t('masterVolume'), 'masterVolume', rowStartY + rowGap);
+    this.addVolumeRow(container, this.t('sfxVolume'), 'sfxVolume', rowStartY + rowGap * 2);
+    this.addVolumeRow(container, this.t('musicVolume'), 'musicVolume', rowStartY + rowGap * 3);
+
+    container.add(
+      this.add.text(labelX, rowStartY + rowGap * 4, this.t('muted'), {
+        color: colors.text,
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '16px',
+      }),
+    );
+    this.addMenuButton(
+      container,
+      valueX,
+      rowStartY + rowGap * 4 + 8,
+      104,
+      32,
+      settings.muted ? this.t('on') : this.t('off'),
+      () => this.toggleMutedFromMenu(),
+    );
+    this.addMenuButton(container, panelX + 100, panelY + 382, 132, 36, this.t('back'), () => this.openPauseMenu('main'));
+  }
+
+  private renderStatsMenu(container: Phaser.GameObjects.Container, panelX: number, panelY: number): void {
+    const stats = this.runStatsSystem.snapshot;
+    const rows: Array<[LocalizationKey, string]> = [
+      ['playTime', this.formatPlayTime(stats.playTimeMs)],
+      ['levelReached', String(stats.levelReached)],
+      ['maxCombo', String(stats.maxCombo)],
+      ['enemiesDefeated', String(stats.enemiesDefeated)],
+      ['pulsesFired', String(stats.pulsesFired)],
+      ['expCollected', String(stats.expCollected)],
+      ['upgradesTaken', String(stats.upgradesTaken)],
+    ];
+    const labelX = panelX + 92;
+    const valueX = panelX + 408;
+    const rowStartY = panelY + 100;
+
+    rows.forEach(([labelKey, value], index) => {
+      const y = rowStartY + index * 38;
+
+      container.add(
+        this.add.text(labelX, y, this.t(labelKey), {
+          color: colors.mutedText,
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          fontSize: '16px',
+        }),
+      );
+      container.add(
+        this.add
+          .text(valueX, y, value, {
+            color: colors.text,
+            fontFamily: 'Consolas, "Courier New", monospace',
+            fontSize: '16px',
+          })
+          .setOrigin(1, 0),
+      );
+    });
+
+    this.addMenuButton(container, panelX + 100, panelY + 382, 132, 36, this.t('back'), () => this.openPauseMenu('main'));
+  }
+
+  private addVolumeRow(
+    container: Phaser.GameObjects.Container,
+    label: string,
+    settingKey: VolumeSettingKey,
+    y: number,
+  ): void {
+    const panelX = this.scale.width * 0.5 - 280;
+    const labelX = panelX + 72;
+    const valueX = panelX + 374;
+    const currentValue = this.settingsSystem.snapshot[settingKey];
+
+    container.add(
+      this.add.text(labelX, y, label, {
+        color: colors.text,
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '16px',
+      }),
+    );
+    this.addMenuButton(container, valueX - 86, y + 8, 36, 32, '-', () => this.adjustVolumeFromMenu(settingKey, -1));
+    container.add(
+      this.add
+        .text(valueX, y, this.formatPercent(currentValue), {
+          color: colors.text,
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: '16px',
+        })
+        .setOrigin(0.5, 0),
+    );
+    this.addMenuButton(container, valueX + 86, y + 8, 36, 32, '+', () => this.adjustVolumeFromMenu(settingKey, 1));
+  }
+
+  private addMenuButton(
+    container: Phaser.GameObjects.Container,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    label: string,
+    onSelect: () => void,
+  ): void {
+    const box = this.add.graphics();
+    const text = this.add
+      .text(x, y, label, {
+        color: colors.text,
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: height <= 32 ? '14px' : '16px',
+      })
+      .setOrigin(0.5);
+    const zone = this.add
+      .zone(x, y, width, height)
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
+
+    box.fillStyle(colors.background, 0.72);
+    box.fillRect(x - width * 0.5, y - height * 0.5, width, height);
+    box.lineStyle(1, colors.coreStroke, 0.54);
+    box.strokeRect(x - width * 0.5, y - height * 0.5, width, height);
+    zone.on('pointerover', () => this.audioSystem.playUiHover());
+    zone.on('pointerdown', () => {
+      this.resumeAudio();
+      this.audioSystem.playSelect();
+      onSelect();
+    });
+
+    container.add([box, text, zone]);
+  }
+
+  private setLanguageFromMenu(language: Language): void {
+    this.settingsSystem.setLanguage(language);
+    this.applyUserSettings();
+    this.renderPauseOverlay();
+  }
+
+  private adjustVolumeFromMenu(settingKey: VolumeSettingKey, direction: number): void {
+    this.settingsSystem.adjustVolume(settingKey, direction);
+    this.applyUserSettings();
+    this.renderPauseOverlay();
+  }
+
+  private toggleMutedFromMenu(): void {
+    this.settingsSystem.toggleMuted();
+    this.applyUserSettings();
+    this.renderPauseOverlay();
+  }
+
+  private applyUserSettings(): void {
+    const settings = this.settingsSystem.snapshot;
+
+    this.localization.setLanguage(settings.language);
+    this.audioSystem.setSettings(settings);
+    this.refreshLocalizedText();
+  }
+
+  private refreshLocalizedText(): void {
+    this.updateExpText();
+    this.updateComboText();
+    this.updateUpgradeStatusHud();
+    this.updateDebugDisplay(this.time.now);
+  }
+
+  private pauseSlowMotionTimer(): void {
+    if (this.slowMotionTimeoutId === undefined) {
+      return;
+    }
+
+    this.slowMotionRemainingMs = Math.max(0, this.slowMotionEndsAt - this.time.now);
+    window.clearTimeout(this.slowMotionTimeoutId);
+    this.slowMotionTimeoutId = undefined;
+  }
+
+  private resumeSlowMotionTimer(): void {
+    if (this.slowMotionRemainingMs <= 0 || this.gameSpeed === 1) {
+      this.slowMotionRemainingMs = 0;
+      return;
+    }
+
+    const remainingMs = this.slowMotionRemainingMs;
+
+    this.slowMotionEndsAt = this.time.now + remainingMs;
+    this.slowMotionRemainingMs = 0;
+    this.slowMotionTimeoutId = window.setTimeout(() => {
+      this.gameSpeed = 1;
+      this.slowMotionTimeoutId = undefined;
+      this.slowMotionEndsAt = 0;
+    }, remainingMs);
+  }
+
+  private restartRun(): void {
+    if (this.slowMotionTimeoutId !== undefined) {
+      window.clearTimeout(this.slowMotionTimeoutId);
+      this.slowMotionTimeoutId = undefined;
+    }
+
+    this.slowMotionEndsAt = 0;
+    this.slowMotionRemainingMs = 0;
+    this.tweens.resumeAll();
+    this.scene.restart();
+  }
+
+  private quitToTitle(): void {
+    // TODO: Switch to a title scene when WIRE BLOOM gets one.
+    this.restartRun();
+  }
+
+  private formatPercent(value: number): string {
+    return `${Math.round(value * 100)}%`;
+  }
+
+  private formatPlayTime(playTimeMs: number): string {
+    const totalSeconds = Math.floor(playTimeMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }
 
   private playComboMilestoneSound(previousCombo: number, currentCombo: number): void {
@@ -806,13 +1224,17 @@ export class GameScene extends Phaser.Scene {
     this.debugText.setText(
       [
         `FPS: ${fps}`,
-        `Enemies: ${this.enemies.length}`,
-        `EXP: ${this.experience}/${this.expToNextLevel}`,
-        `Level: ${this.level}`,
-        `Combo: ${this.combo}`,
-        `Charge: ${Math.round(chargeRatio * 100)}%`,
+        `${this.t('enemies')}: ${this.enemies.length}`,
+        `${this.t('exp')}: ${this.experience}/${this.expToNextLevel}`,
+        `${this.t('level')}: ${this.level}`,
+        `${this.t('combo')}: ${this.combo}`,
+        `${this.t('charge')}: ${Math.round(chargeRatio * 100)}%`,
       ].join('\n'),
     );
+  }
+
+  private t(key: LocalizationKey): string {
+    return this.localization.t(key);
   }
 
   private getExpToNextLevel(): number {
