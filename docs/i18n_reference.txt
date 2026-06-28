@@ -64,6 +64,30 @@ key: quitMessage
 ja: ブラウザを閉じてください
 en: Please close the browser tab.
 
+key: hp
+ja: HP
+en: HP
+
+key: gameOver
+ja: ゲームオーバー
+en: Game Over
+
+key: score
+ja: スコア
+en: Score
+
+key: damageTaken
+ja: 被ダメージ
+en: Damage Taken
+
+key: enemySpeed
+ja: 敵速度
+en: Enemy Speed
+
+key: pulseDamage
+ja: パルス威力
+en: Pulse Damage
+
 key: back
 ja: 戻る
 en: Back
@@ -271,6 +295,14 @@ en: Best Level
 key: bestCombo
 ja: 最大コンボ
 en: Best Combo
+
+key: bestScore
+ja: 最高スコア
+en: Best Score
+
+key: totalScore
+ja: 累計スコア
+en: Total Score
 
 key: totalEnemiesDefeated
 ja: 累計撃破数

@@ -151,6 +151,16 @@ Level UPメニューには現在の主要強化値として、Pulse Radius、Pul
 - UI text is routed through `src/systems/LocalizationSystem.ts` with strings in `src/config/localization.ts`.
 - Developer-facing localization reference: `docs/i18n_reference.txt`. Update it together with `src/config/localization.ts` when UI text changes.
 
+## Player / HP / Game Over
+
+- Move the player core with `WASD` or the arrow keys. Pulse attacks, enemy tracking, and EXP orb magnet targets use the current player position.
+- Player HP starts at `5`. Enemy contact deals type-specific damage, briefly grants invincibility, flashes the core red, and removes the contacting enemy without EXP or shockwave rewards.
+- When HP reaches `0`, gameplay stops and a Game Over / Results panel shows play time, level reached, max combo, enemies defeated, pulses fired, EXP collected, upgrades taken, and score.
+- Restart and Quit to Title save the run once into total records.
+- Enemy speed grows over time by `enemy.speedGrowthPerSecond` and is capped by `enemy.speedMaxMultiplier`; F3 debug shows the current enemy speed multiplier.
+- Enemy types are configured in `gameplayConfig.enemy.types`: small, normal, heavy, and tank have different HP, speed, damage, EXP, spawn weight, size, and color.
+- Score uses `gameplayConfig.score`: enemies defeated, EXP collected, max combo, level reached, and play time seconds.
+
 ## Shockwave Tuning Note
 
 - Shockwave base radius is currently `48`, and `Shockwave Radius +` adds `6` each time.

@@ -1,3 +1,5 @@
+import { gameplayConfig } from '../config/gameplayConfig';
+
 export type RunStatsSnapshot = {
   playTimeMs: number;
   levelReached: number;
@@ -6,10 +8,12 @@ export type RunStatsSnapshot = {
   pulsesFired: number;
   expCollected: number;
   upgradesTaken: number;
+  damageTaken: number;
+  score: number;
 };
 
 export class RunStatsSystem {
-  private stats: RunStatsSnapshot = {
+  private stats: Omit<RunStatsSnapshot, 'score'> = {
     playTimeMs: 0,
     levelReached: 1,
     maxCombo: 0,
@@ -17,10 +21,14 @@ export class RunStatsSystem {
     pulsesFired: 0,
     expCollected: 0,
     upgradesTaken: 0,
+    damageTaken: 0,
   };
 
   get snapshot(): RunStatsSnapshot {
-    return { ...this.stats };
+    return {
+      ...this.stats,
+      score: this.calculateScore(),
+    };
   }
 
   updatePlayTime(deltaMs: number): void {
@@ -51,6 +59,10 @@ export class RunStatsSystem {
     this.stats.upgradesTaken += 1;
   }
 
+  recordDamageTaken(damage: number): void {
+    this.stats.damageTaken += Math.max(0, damage);
+  }
+
   reset(): void {
     this.stats = {
       playTimeMs: 0,
@@ -60,6 +72,19 @@ export class RunStatsSystem {
       pulsesFired: 0,
       expCollected: 0,
       upgradesTaken: 0,
+      damageTaken: 0,
     };
+  }
+
+  private calculateScore(): number {
+    const playTimeSeconds = Math.floor(this.stats.playTimeMs / 1000);
+
+    return (
+      this.stats.enemiesDefeated * gameplayConfig.score.enemiesDefeated +
+      this.stats.expCollected * gameplayConfig.score.expCollected +
+      this.stats.maxCombo * gameplayConfig.score.maxCombo +
+      this.stats.levelReached * gameplayConfig.score.levelReached +
+      playTimeSeconds * gameplayConfig.score.playTimeSecond
+    );
   }
 }

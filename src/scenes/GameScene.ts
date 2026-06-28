@@ -28,6 +28,22 @@ type UpgradeChoice = {
 
 type PauseMenuMode = 'main' | 'settings' | 'stats';
 type VolumeSettingKey = 'masterVolume' | 'sfxVolume' | 'musicVolume';
+type MovementKeys = {
+  up: Phaser.Input.Keyboard.Key;
+  down: Phaser.Input.Keyboard.Key;
+  left: Phaser.Input.Keyboard.Key;
+  right: Phaser.Input.Keyboard.Key;
+  w: Phaser.Input.Keyboard.Key;
+  a: Phaser.Input.Keyboard.Key;
+  s: Phaser.Input.Keyboard.Key;
+  d: Phaser.Input.Keyboard.Key;
+};
+type PlayerTrailSegment = {
+  x: number;
+  y: number;
+  age: number;
+  life: number;
+};
 
 const UPGRADE_CHOICES: UpgradeChoice[] = [
   {
@@ -60,11 +76,14 @@ const UPGRADE_CHOICES: UpgradeChoice[] = [
 export class GameScene extends Phaser.Scene {
   private grid!: Phaser.GameObjects.Graphics;
   private core!: Phaser.GameObjects.Graphics;
+  private playerTrail!: Phaser.GameObjects.Graphics;
   private chargeRing!: Phaser.GameObjects.Graphics;
   private spaceKey!: Phaser.Input.Keyboard.Key;
+  private movementKeys!: MovementKeys;
   private titleText!: Phaser.GameObjects.Text;
   private comboText!: Phaser.GameObjects.Text;
   private expText!: Phaser.GameObjects.Text;
+  private hpText!: Phaser.GameObjects.Text;
   private upgradeStatusText!: Phaser.GameObjects.Text;
   private debugText!: Phaser.GameObjects.Text;
   private localization!: LocalizationSystem;
@@ -94,12 +113,18 @@ export class GameScene extends Phaser.Scene {
   private comboGraceBonusMs = 0;
   private debugVisible = false;
   private isPaused = false;
+  private isGameOver = false;
   private pausedAt = 0;
+  private playerHp: number = gameplayConfig.player.maxHp;
+  private invincibleUntil = 0;
+  private damageFlashUntil = 0;
   private gameSpeed = 1;
   private slowMotionTimeoutId: number | undefined;
   private slowMotionEndsAt = 0;
   private slowMotionRemainingMs = 0;
   private hasSavedRunStats = false;
+  private playerTrailSegments: PlayerTrailSegment[] = [];
+  private gameOverOverlay: Phaser.GameObjects.Container | null = null;
   private readonly handleWindowKeyDown = (event: KeyboardEvent): void => {
     if (event.key === 'Escape' || event.code === 'Escape') {
       this.togglePauseMenu(event);
@@ -120,12 +145,28 @@ export class GameScene extends Phaser.Scene {
     this.runStatsSystem = new RunStatsSystem();
     this.totalStatsSystem = new TotalStatsSystem();
     this.hasSavedRunStats = false;
+    this.isGameOver = false;
+    this.playerHp = gameplayConfig.player.maxHp;
+    this.invincibleUntil = 0;
+    this.damageFlashUntil = 0;
+    this.playerTrailSegments = [];
     this.audioSystem = new AudioSystem();
     this.audioSystem.setSettings(this.settingsSystem.snapshot);
     this.effectSystem = new EffectSystem(this);
+    this.playerTrail = this.add.graphics().setDepth(4.5);
     this.core = this.add.graphics();
     this.chargeRing = this.add.graphics().setDepth(4);
     this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    this.movementKeys = {
+      up: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.UP),
+      down: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN),
+      left: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT),
+      right: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT),
+      w: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.W),
+      a: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.A),
+      s: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.S),
+      d: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D),
+    };
 
     this.drawGrid();
     this.drawCore();
@@ -148,13 +189,13 @@ export class GameScene extends Phaser.Scene {
     this.updateDebugDisplay(time);
     this.updateUpgradeStatusHud();
 
-    if (this.isPaused) {
+    if (this.isPaused || this.isGameOver) {
       return;
     }
 
     this.effectSystem.update(delta);
 
-    if (this.levelUpOverlay) {
+    if (this.levelUpOverlay || this.isGameOver) {
       return;
     }
 
@@ -162,6 +203,9 @@ export class GameScene extends Phaser.Scene {
 
     const scaledDelta = delta * this.gameSpeed;
 
+    this.updatePlayerMovement(scaledDelta);
+    this.updatePlayerTrail(scaledDelta);
+    this.updatePlayerVisuals(time);
     this.handleChargeInput(time);
     this.updateChargeRing(time);
     this.updateEnemies(scaledDelta);
@@ -192,15 +236,21 @@ export class GameScene extends Phaser.Scene {
 
   private drawCore(): void {
     const { radius, outerRadius } = gameplayConfig.core;
+    const isDamaged = this.time.now < this.damageFlashUntil;
+    const isInvincible = this.time.now < this.invincibleUntil;
+    const shouldBlink = isInvincible && Math.floor(this.time.now / 90) % 2 === 0;
+    const fillColor = isDamaged ? colors.enemyFill : colors.coreFill;
+    const strokeColor = isDamaged ? colors.enemyStroke : colors.coreStroke;
 
     this.core.clear();
     this.core.setPosition(this.center.x, this.center.y);
     this.core.setDepth(7);
-    this.core.fillStyle(colors.coreFill, 0.86);
+    this.core.setAlpha(shouldBlink ? 0.48 : 1);
+    this.core.fillStyle(fillColor, 0.86);
     this.core.fillCircle(0, 0, radius);
-    this.core.lineStyle(2, colors.coreStroke, 0.95);
+    this.core.lineStyle(2, strokeColor, 0.95);
     this.core.strokeCircle(0, 0, radius);
-    this.core.lineStyle(1, colors.coreStroke, 0.35);
+    this.core.lineStyle(1, strokeColor, 0.35);
     this.core.strokeCircle(0, 0, outerRadius);
     this.core.lineBetween(-72, 0, -44, 0);
     this.core.lineBetween(44, 0, 72, 0);
@@ -232,6 +282,12 @@ export class GameScene extends Phaser.Scene {
       fontSize: '18px',
     });
 
+    this.hpText = this.add.text(24, 46, '', {
+      color: colors.text,
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '18px',
+    });
+
     this.comboText = this.add
       .text(this.scale.width - 24, 22, '', {
         color: colors.text,
@@ -249,7 +305,7 @@ export class GameScene extends Phaser.Scene {
     this.upgradeStatusText.setDepth(12);
 
     this.debugText = this.add
-      .text(24, 58, '', {
+      .text(24, 78, '', {
         color: colors.text,
         fontFamily: 'Consolas, "Courier New", monospace',
         fontSize: '14px',
@@ -263,6 +319,7 @@ export class GameScene extends Phaser.Scene {
       .setVisible(false);
 
     this.updateExpText();
+    this.updateHpText();
     this.updateComboText();
     this.updateUpgradeStatusHud();
   }
@@ -281,6 +338,68 @@ export class GameScene extends Phaser.Scene {
       this.isCharging = false;
       this.chargeRing.clear();
       this.firePulse(chargeDuration);
+    }
+  }
+
+  private updatePlayerMovement(delta: number): void {
+    const direction = new Phaser.Math.Vector2(
+      (this.movementKeys.right.isDown || this.movementKeys.d.isDown ? 1 : 0) -
+        (this.movementKeys.left.isDown || this.movementKeys.a.isDown ? 1 : 0),
+      (this.movementKeys.down.isDown || this.movementKeys.s.isDown ? 1 : 0) -
+        (this.movementKeys.up.isDown || this.movementKeys.w.isDown ? 1 : 0),
+    );
+
+    if (direction.lengthSq() <= 0) {
+      return;
+    }
+
+    direction.normalize();
+
+    const step = gameplayConfig.player.speed * (delta / 1000);
+    const margin = gameplayConfig.core.outerRadius;
+
+    this.center.x = Phaser.Math.Clamp(this.center.x + direction.x * step, margin, this.scale.width - margin);
+    this.center.y = Phaser.Math.Clamp(this.center.y + direction.y * step, margin, this.scale.height - margin);
+    this.playerTrailSegments.push({
+      x: this.center.x,
+      y: this.center.y,
+      age: 0,
+      life: gameplayConfig.player.trailLifeMs,
+    });
+
+    if (this.playerTrailSegments.length > 36) {
+      this.playerTrailSegments.splice(0, this.playerTrailSegments.length - 36);
+    }
+
+    this.core.rotation += 0.0024 * delta;
+  }
+
+  private updatePlayerTrail(delta: number): void {
+    this.playerTrail.clear();
+    this.playerTrailSegments = this.playerTrailSegments.filter((segment) => {
+      segment.age += delta;
+
+      const ratio = Phaser.Math.Clamp(segment.age / segment.life, 0, 1);
+
+      if (ratio >= 1) {
+        return false;
+      }
+
+      const alpha = (1 - ratio) * gameplayConfig.player.trailAlpha;
+      const radius = Phaser.Math.Linear(gameplayConfig.core.radius * 0.25, gameplayConfig.core.outerRadius, ratio);
+
+      this.playerTrail.lineStyle(1, colors.coreStroke, alpha);
+      this.playerTrail.strokeCircle(segment.x, segment.y, radius);
+
+      return true;
+    });
+  }
+
+  private updatePlayerVisuals(time: number): void {
+    this.drawCore();
+
+    if (time >= this.invincibleUntil) {
+      this.core.setAlpha(1);
     }
   }
 
@@ -318,10 +437,10 @@ export class GameScene extends Phaser.Scene {
 
   private spawnEnemy(): void {
     const spawnPoint = this.getRandomEdgePoint();
-    const health = Phaser.Math.Between(gameplayConfig.enemy.healthMin, gameplayConfig.enemy.healthMax);
-    const speed = Phaser.Math.FloatBetween(gameplayConfig.enemy.speedMin, gameplayConfig.enemy.speedMax) * (1 - (health - 1) * 0.1);
+    const enemyType = this.getRandomEnemyType();
+    const speed = Phaser.Math.FloatBetween(gameplayConfig.enemy.speedMin, gameplayConfig.enemy.speedMax);
 
-    this.enemies.push(new Enemy(this, spawnPoint.x, spawnPoint.y, speed, health));
+    this.enemies.push(new Enemy(this, spawnPoint.x, spawnPoint.y, speed, enemyType));
   }
 
   private getRandomEdgePoint(): Phaser.Math.Vector2 {
@@ -346,9 +465,15 @@ export class GameScene extends Phaser.Scene {
 
   private updateEnemies(delta: number): void {
     const survivors: Enemy[] = [];
+    const enemySpeedMultiplier = this.getEnemySpeedMultiplier();
 
     for (const enemy of this.enemies) {
-      enemy.moveToward(this.center, delta);
+      enemy.moveToward(this.center, delta, enemySpeedMultiplier);
+
+      if (this.handleEnemyContact(enemy)) {
+        enemy.destroy();
+        continue;
+      }
 
       if (enemy.isWithinRadius(this.center, gameplayConfig.enemy.removeRadius)) {
         enemy.destroy();
@@ -358,6 +483,59 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.enemies = survivors;
+  }
+
+  private getRandomEnemyType(): (typeof gameplayConfig.enemy.types)[number] {
+    const totalWeight = gameplayConfig.enemy.types.reduce((sum, enemyType) => sum + enemyType.spawnWeight, 0);
+    let roll = Phaser.Math.Between(1, totalWeight);
+
+    for (const enemyType of gameplayConfig.enemy.types) {
+      roll -= enemyType.spawnWeight;
+
+      if (roll <= 0) {
+        return enemyType;
+      }
+    }
+
+    return gameplayConfig.enemy.types[0];
+  }
+
+  private handleEnemyContact(enemy: Enemy): boolean {
+    const contactRadius = gameplayConfig.core.radius + enemy.radius;
+
+    if (!enemy.isWithinRadius(this.center, contactRadius)) {
+      return false;
+    }
+
+    if (this.time.now < this.invincibleUntil) {
+      return false;
+    }
+
+    this.takePlayerDamage(enemy.damageToPlayer);
+    return true;
+  }
+
+  private takePlayerDamage(damage: number): void {
+    this.playerHp = Math.max(0, this.playerHp - damage);
+    this.invincibleUntil = this.time.now + gameplayConfig.player.invincibilityMs;
+    this.damageFlashUntil = this.time.now + gameplayConfig.player.damageFlashMs;
+    this.runStatsSystem.recordDamageTaken(damage);
+    this.updateHpText();
+    this.drawCore();
+    this.cameras.main.shake(120, 0.006);
+
+    if (this.playerHp <= 0) {
+      this.openGameOverOverlay();
+    }
+  }
+
+  private getEnemySpeedMultiplier(): number {
+    const elapsedSeconds = this.runStatsSystem.snapshot.playTimeMs / 1000;
+
+    return Math.min(
+      gameplayConfig.enemy.speedMaxMultiplier,
+      1 + elapsedSeconds * gameplayConfig.enemy.speedGrowthPerSecond,
+    );
   }
 
   private damageEnemiesInPulse(pulse: PulseStats, comboAtFire: number): void {
@@ -564,8 +742,12 @@ export class GameScene extends Phaser.Scene {
     this.expText.setText(`${this.t('lv')} ${this.level}  ${this.t('exp')} ${this.experience}/${this.expToNextLevel}`);
   }
 
+  private updateHpText(): void {
+    this.hpText.setText(`${this.t('hp')}: ${this.playerHp}/${gameplayConfig.player.maxHp}`);
+  }
+
   private openLevelUpOverlay(): void {
-    if (this.levelUpOverlay) {
+    if (this.levelUpOverlay || this.isGameOver) {
       return;
     }
 
@@ -901,7 +1083,7 @@ export class GameScene extends Phaser.Scene {
 
     const { width, height } = this.scale;
     const panelWidth = 560;
-    const panelHeight = this.pauseMode === 'main' ? 390 : 430;
+    const panelHeight = this.pauseMode === 'main' ? 390 : this.pauseMode === 'stats' ? 500 : 430;
     const panelX = width * 0.5 - panelWidth * 0.5;
     const panelY = height * 0.5 - panelHeight * 0.5;
     const container = this.add.container(0, 0).setDepth(80);
@@ -1032,6 +1214,8 @@ export class GameScene extends Phaser.Scene {
       ['pulsesFired', String(stats.pulsesFired)],
       ['expCollected', String(stats.expCollected)],
       ['upgradesTaken', String(stats.upgradesTaken)],
+      ['damageTaken', String(stats.damageTaken)],
+      ['score', String(stats.score)],
     ];
     const labelX = panelX + 92;
     const valueX = panelX + 408;
@@ -1058,7 +1242,86 @@ export class GameScene extends Phaser.Scene {
       );
     });
 
-    this.addMenuButton(container, panelX + 100, panelY + 382, 132, 36, this.t('back'), () => this.openPauseMenu('main'));
+    this.addMenuButton(container, panelX + 100, panelY + 450, 132, 36, this.t('back'), () => this.openPauseMenu('main'));
+  }
+
+  private openGameOverOverlay(): void {
+    if (this.gameOverOverlay) {
+      return;
+    }
+
+    this.isGameOver = true;
+    this.isCharging = false;
+    this.chargeRing.clear();
+    this.enemySpawnTimer.paused = true;
+    this.pauseSlowMotionTimer();
+    this.saveCurrentRunStats();
+
+    const { width, height } = this.scale;
+    const panelWidth = 620;
+    const panelHeight = 430;
+    const panelX = width * 0.5 - panelWidth * 0.5;
+    const panelY = height * 0.5 - panelHeight * 0.5;
+    const stats = this.runStatsSystem.snapshot;
+    const rows: Array<[LocalizationKey, string]> = [
+      ['playTime', this.formatPlayTime(stats.playTimeMs)],
+      ['levelReached', String(stats.levelReached)],
+      ['maxCombo', String(stats.maxCombo)],
+      ['enemiesDefeated', String(stats.enemiesDefeated)],
+      ['pulsesFired', String(stats.pulsesFired)],
+      ['expCollected', String(stats.expCollected)],
+      ['upgradesTaken', String(stats.upgradesTaken)],
+      ['score', String(stats.score)],
+    ];
+    const container = this.add.container(0, 0).setDepth(90);
+    const backdrop = this.add.graphics();
+    const panel = this.add.graphics();
+
+    backdrop.fillStyle(colors.overlayFill, 0.86);
+    backdrop.fillRect(0, 0, width, height);
+    panel.fillStyle(colors.overlayPanel, 0.96);
+    panel.fillRect(panelX, panelY, panelWidth, panelHeight);
+    panel.lineStyle(2, colors.enemyStroke, 0.82);
+    panel.strokeRect(panelX, panelY, panelWidth, panelHeight);
+    panel.lineStyle(1, colors.coreStroke, 0.24);
+    panel.strokeRect(panelX + 12, panelY + 12, panelWidth - 24, panelHeight - 24);
+
+    container.add([backdrop, panel]);
+    container.add(
+      this.add
+        .text(width * 0.5, panelY + 42, this.t('gameOver'), {
+          color: colors.text,
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          fontSize: '30px',
+          letterSpacing: 3,
+        })
+        .setOrigin(0.5),
+    );
+
+    rows.forEach(([key, value], index) => {
+      const y = panelY + 92 + index * 32;
+
+      container.add(
+        this.add.text(panelX + 92, y, this.t(key), {
+          color: colors.mutedText,
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          fontSize: '15px',
+        }),
+      );
+      container.add(
+        this.add
+          .text(panelX + panelWidth - 92, y, value, {
+            color: colors.text,
+            fontFamily: 'Consolas, "Courier New", monospace',
+            fontSize: '15px',
+          })
+          .setOrigin(1, 0),
+      );
+    });
+
+    this.addMenuButton(container, width * 0.5 - 90, panelY + 382, 150, 38, this.t('restart'), () => this.restartRun());
+    this.addMenuButton(container, width * 0.5 + 110, panelY + 382, 190, 38, this.t('quitToTitle'), () => this.quitToTitle());
+    this.gameOverOverlay = container;
   }
 
   private addVolumeRow(
@@ -1156,6 +1419,7 @@ export class GameScene extends Phaser.Scene {
 
   private refreshLocalizedText(): void {
     this.updateExpText();
+    this.updateHpText();
     this.updateComboText();
     this.updateUpgradeStatusHud();
     this.updateDebugDisplay(this.time.now);
@@ -1264,6 +1528,7 @@ export class GameScene extends Phaser.Scene {
         `${this.t('level')}: ${this.level}`,
         `${this.t('combo')}: ${this.combo}`,
         `${this.t('charge')}: ${Math.round(chargeRatio * 100)}%`,
+        `${this.t('enemySpeed')}: x${this.getEnemySpeedMultiplier().toFixed(2)}`,
       ].join('\n'),
     );
   }

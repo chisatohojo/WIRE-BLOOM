@@ -9,6 +9,8 @@ export type TotalStatsSnapshot = {
   totalPulsesFired: number;
   totalExpCollected: number;
   totalUpgradesTaken: number;
+  bestScore: number;
+  totalScore: number;
 };
 
 const storageKey = 'wireBloom.totalStats';
@@ -22,6 +24,8 @@ const defaultStats: TotalStatsSnapshot = {
   totalPulsesFired: 0,
   totalExpCollected: 0,
   totalUpgradesTaken: 0,
+  bestScore: 0,
+  totalScore: 0,
 };
 
 export class TotalStatsSystem {
@@ -44,6 +48,8 @@ export class TotalStatsSystem {
     this.stats.totalPulsesFired += Math.max(0, runStats.pulsesFired);
     this.stats.totalExpCollected += Math.max(0, runStats.expCollected);
     this.stats.totalUpgradesTaken += Math.max(0, runStats.upgradesTaken);
+    this.stats.bestScore = Math.max(this.stats.bestScore, runStats.score);
+    this.stats.totalScore += Math.max(0, runStats.score);
     this.saveStats();
 
     return this.snapshot;
@@ -68,6 +74,8 @@ export class TotalStatsSystem {
         totalPulsesFired: this.readCount(parsedStats.totalPulsesFired, defaultStats.totalPulsesFired),
         totalExpCollected: this.readCount(parsedStats.totalExpCollected, defaultStats.totalExpCollected),
         totalUpgradesTaken: this.readCount(parsedStats.totalUpgradesTaken, defaultStats.totalUpgradesTaken),
+        bestScore: this.readCount(parsedStats.bestScore, defaultStats.bestScore),
+        totalScore: this.readCount(parsedStats.totalScore, defaultStats.totalScore),
       };
     } catch {
       return { ...defaultStats };

@@ -6,22 +6,30 @@ type Point = {
   y: number;
 };
 
+export type EnemyTypeConfig = (typeof gameplayConfig.enemy.types)[number];
+
 export class Enemy extends Phaser.GameObjects.Graphics {
   readonly maxHealth: number;
   readonly expValue: number;
   readonly radius: number;
+  readonly damageToPlayer: number;
+  readonly typeId: EnemyTypeConfig['id'];
 
   private readonly speed: number;
+  private readonly typeConfig: EnemyTypeConfig;
   private health: number;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, speed: number, health: number) {
+  constructor(scene: Phaser.Scene, x: number, y: number, speed: number, typeConfig: EnemyTypeConfig) {
     super(scene);
 
-    this.speed = speed;
-    this.health = health;
-    this.maxHealth = health;
-    this.expValue = health;
-    this.radius = gameplayConfig.enemy.radius + (health - 1) * 3;
+    this.typeConfig = typeConfig;
+    this.typeId = typeConfig.id;
+    this.speed = speed * typeConfig.speedMultiplier;
+    this.health = typeConfig.hp;
+    this.maxHealth = typeConfig.hp;
+    this.expValue = typeConfig.expValue;
+    this.radius = typeConfig.radius;
+    this.damageToPlayer = typeConfig.damageToPlayer;
     this.setPosition(x, y);
     this.setDepth(5);
     this.draw();
@@ -29,14 +37,14 @@ export class Enemy extends Phaser.GameObjects.Graphics {
     scene.add.existing(this);
   }
 
-  moveToward(target: Point, deltaMs: number): void {
+  moveToward(target: Point, deltaMs: number, speedMultiplier: number = 1): void {
     const distance = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
 
     if (distance <= 0) {
       return;
     }
 
-    const step = Math.min(distance, this.speed * (deltaMs / 1000));
+    const step = Math.min(distance, this.speed * speedMultiplier * (deltaMs / 1000));
     const angle = Phaser.Math.Angle.Between(this.x, this.y, target.x, target.y);
 
     this.x += Math.cos(angle) * step;
@@ -56,6 +64,7 @@ export class Enemy extends Phaser.GameObjects.Graphics {
     }
 
     this.draw();
+    this.playDamageFlash();
     return false;
   }
 
@@ -86,15 +95,16 @@ export class Enemy extends Phaser.GameObjects.Graphics {
     const healthRatio = this.health / this.maxHealth;
 
     this.clear();
-    this.fillStyle(colors.enemyFill, 0.44 + healthRatio * 0.18);
+    this.fillStyle(this.typeConfig.fillColor, 0.44 + healthRatio * 0.18);
     this.fillCircle(0, 0, radius);
-    this.lineStyle(1, colors.enemyStroke, 0.92);
+    this.lineStyle(1, this.typeConfig.strokeColor, 0.92);
     this.strokeCircle(0, 0, radius);
-    this.fillStyle(colors.enemyCore, 0.28 + healthRatio * 0.28);
+    this.drawWirePolygon(radius, 0.72);
+    this.fillStyle(this.typeConfig.coreColor, 0.28 + healthRatio * 0.28);
     this.fillCircle(0, 0, 3 + healthRatio * 4);
     this.lineBetween(-radius, 0, radius, 0);
     this.lineBetween(0, -radius, 0, radius);
-    this.lineStyle(1, colors.enemyStroke, 0.42);
+    this.lineStyle(1, this.typeConfig.strokeColor, 0.42);
     this.strokeCircle(0, 0, radius + 6);
 
     for (let index = 0; index < this.maxHealth; index += 1) {
@@ -102,8 +112,37 @@ export class Enemy extends Phaser.GameObjects.Graphics {
       const inner = radius + 9;
       const outer = radius + 13;
 
-      this.lineStyle(1, colors.enemyCore, index < this.health ? 0.78 : 0.16);
+      this.lineStyle(1, this.typeConfig.coreColor, index < this.health ? 0.78 : 0.16);
       this.lineBetween(Math.cos(angle) * inner, Math.sin(angle) * inner, Math.cos(angle) * outer, Math.sin(angle) * outer);
+    }
+  }
+
+  private playDamageFlash(): void {
+    this.lineStyle(2, colors.pulse, 0.72);
+    this.strokeCircle(0, 0, this.radius + 3);
+    this.scene.time.delayedCall(gameplayConfig.effects.enemyFlashDurationMs, () => {
+      if (this.active && this.health > 0) {
+        this.draw();
+      }
+    });
+  }
+
+  private drawWirePolygon(radius: number, alpha: number): void {
+    const points: Phaser.Math.Vector2[] = [];
+
+    for (let index = 0; index < this.typeConfig.sides; index += 1) {
+      const angle = (Math.PI * 2 * index) / this.typeConfig.sides - Math.PI / 2;
+
+      points.push(new Phaser.Math.Vector2(Math.cos(angle) * radius, Math.sin(angle) * radius));
+    }
+
+    this.lineStyle(1, this.typeConfig.strokeColor, alpha);
+
+    for (let index = 0; index < points.length; index += 1) {
+      const current = points[index];
+      const next = points[(index + 1) % points.length];
+
+      this.lineBetween(current.x, current.y, next.x, next.y);
     }
   }
 }
