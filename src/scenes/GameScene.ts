@@ -98,6 +98,8 @@ export class GameScene extends Phaser.Scene {
   private upgradeLevels: Partial<Record<UpgradeId, number>> = {};
   private currentUpgradeChoices: UpgradeDefinition[] = [];
   private debugVisible = false;
+  private lastShockwaveChainCount = 0;
+  private recentMaxShockwaveChainCount = 0;
   private isPaused = false;
   private isGameOver = false;
   private pausedAt = 0;
@@ -173,6 +175,8 @@ export class GameScene extends Phaser.Scene {
     this.enemySpawnRateMultiplier = 1;
     this.upgradeLevels = {};
     this.currentUpgradeChoices = [];
+    this.lastShockwaveChainCount = 0;
+    this.recentMaxShockwaveChainCount = 0;
     this.audioSystem = new AudioSystem();
     this.audioSystem.setSettings(this.settingsSystem.snapshot);
     this.effectSystem = new EffectSystem(this);
@@ -196,6 +200,10 @@ export class GameScene extends Phaser.Scene {
     this.setupCamera();
     this.addHud();
     this.input.keyboard!.on('keydown-F3', this.toggleDebugDisplay, this);
+    this.input.keyboard!.on('keydown-F6', this.debugLevelUp, this);
+    this.input.keyboard!.on('keydown-F7', this.debugHealPlayer, this);
+    this.input.keyboard!.on('keydown-F8', this.debugSpawnBoss, this);
+    this.input.keyboard!.on('keydown-F9', this.debugClearEnemies, this);
     this.input.keyboard!.on('keydown-M', this.toggleMute, this);
     this.input.keyboard!.on('keydown-SPACE', this.resumeAudio, this);
     this.input.on('pointerdown', this.resumeAudio, this);
@@ -609,6 +617,21 @@ export class GameScene extends Phaser.Scene {
     return gameplayConfig.enemy.types.find((enemyType) => enemyType.id === typeId) ?? gameplayConfig.enemy.types[0];
   }
 
+  private spawnEnemyNearPlayer(typeId: string): void {
+    if (this.enemies.length >= gameplayConfig.enemy.maxEnemies) {
+      return;
+    }
+
+    const enemyType = this.getEnemyTypeById(typeId);
+    const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+    const distance = Phaser.Math.Between(180, 260);
+    const x = Phaser.Math.Clamp(this.center.x + Math.cos(angle) * distance, enemyType.radius, gameplayConfig.world.width - enemyType.radius);
+    const y = Phaser.Math.Clamp(this.center.y + Math.sin(angle) * distance, enemyType.radius, gameplayConfig.world.height - enemyType.radius);
+    const speed = Phaser.Math.FloatBetween(gameplayConfig.enemy.speedMin, gameplayConfig.enemy.speedMax);
+
+    this.enemies.push(new Enemy(this, x, y, speed, enemyType));
+  }
+
   private canEnemySpawnChildren(parentType: EnemyTypeConfig): boolean {
     if ('canSpawnChildren' in parentType && parentType.canSpawnChildren === false) {
       return false;
@@ -761,6 +784,9 @@ export class GameScene extends Phaser.Scene {
 
       this.enemies = survivors;
     }
+
+    this.lastShockwaveChainCount = processedCount;
+    this.recentMaxShockwaveChainCount = Math.max(this.recentMaxShockwaveChainCount, processedCount);
 
     return defeatedCount;
   }
@@ -1295,6 +1321,57 @@ export class GameScene extends Phaser.Scene {
     event?.preventDefault();
     this.debugVisible = !this.debugVisible;
     this.debugText.setVisible(this.debugVisible);
+    this.updateDebugDisplay(this.time.now);
+  }
+
+  private canUseDebugHotkey(event?: KeyboardEvent): boolean {
+    if (!this.debugVisible) {
+      return false;
+    }
+
+    event?.preventDefault();
+
+    return !this.isPaused && !this.isGameOver && !this.levelUpOverlay;
+  }
+
+  private debugLevelUp(event?: KeyboardEvent): void {
+    if (!this.canUseDebugHotkey(event)) {
+      return;
+    }
+
+    this.levelUp();
+  }
+
+  private debugHealPlayer(event?: KeyboardEvent): void {
+    if (!this.canUseDebugHotkey(event)) {
+      return;
+    }
+
+    this.healPlayer(1);
+    this.updateHpText();
+    this.updateDebugDisplay(this.time.now);
+  }
+
+  private debugSpawnBoss(event?: KeyboardEvent): void {
+    if (!this.canUseDebugHotkey(event)) {
+      return;
+    }
+
+    this.spawnEnemyNearPlayer('boss');
+    this.updateDebugDisplay(this.time.now);
+  }
+
+  private debugClearEnemies(event?: KeyboardEvent): void {
+    if (!this.canUseDebugHotkey(event)) {
+      return;
+    }
+
+    for (const enemy of this.enemies) {
+      enemy.destroy();
+    }
+
+    this.enemies = [];
+    this.lastShockwaveChainCount = 0;
     this.updateDebugDisplay(this.time.now);
   }
 
@@ -1863,18 +1940,37 @@ export class GameScene extends Phaser.Scene {
 
     const chargeRatio = this.isCharging ? this.getChargeRatio(time - this.chargeStartedAt) : 0;
     const fps = Math.round(this.game.loop.actualFps);
+    const stats = this.runStatsSystem.snapshot;
+    const enemyTypeCounts = this.getEnemyTypeDebugText();
 
     this.debugText.setText(
       [
         `FPS: ${fps}`,
         `${this.t('enemies')}: ${this.enemies.length}`,
+        `Types: ${enemyTypeCounts}`,
+        `EXP Orbs: ${this.expOrbs.length}`,
         `${this.t('exp')}: ${this.experience}/${this.expToNextLevel}`,
         `${this.t('level')}: ${this.level}`,
         `${this.t('combo')}: ${this.combo}`,
         `${this.t('charge')}: ${Math.round(chargeRatio * 100)}%`,
+        `${this.t('hp')}: ${this.playerHp}/${this.playerMaxHp}`,
         `${this.t('enemySpeed')}: x${this.getEnemySpeedMultiplier().toFixed(2)}`,
+        `${this.t('enemyDensity')}: x${this.enemySpawnRateMultiplier.toFixed(2)}`,
+        `Shockwave Chain: ${this.lastShockwaveChainCount} / max ${this.recentMaxShockwaveChainCount}`,
+        `${this.t('score')}: ${stats.score}`,
+        'F6 Lv+  F7 Heal  F8 Boss  F9 Clear',
       ].join('\n'),
     );
+  }
+
+  private getEnemyTypeDebugText(): string {
+    return gameplayConfig.enemy.types
+      .map((enemyType) => {
+        const count = this.enemies.reduce((sum, enemy) => sum + (enemy.typeId === enemyType.id ? 1 : 0), 0);
+
+        return `${enemyType.id}:${count}`;
+      })
+      .join(' ');
   }
 
   private t(key: LocalizationKey): string {
