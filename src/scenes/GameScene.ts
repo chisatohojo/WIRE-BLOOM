@@ -81,7 +81,7 @@ export class GameScene extends Phaser.Scene {
   private suppressPointerPulseUntilReleased = false;
   private pulseSuppressedUntil = 0;
   private combo = 0;
-  private comboExpiresAt = 0;
+  private comboGraceRemainingMs = 0;
   private experience = 0;
   private level = 1;
   private expToNextLevel: number = gameplayConfig.progression.baseExpToNextLevel;
@@ -102,7 +102,6 @@ export class GameScene extends Phaser.Scene {
   private recentMaxShockwaveChainCount = 0;
   private isPaused = false;
   private isGameOver = false;
-  private pausedAt = 0;
   private playerHp: number = gameplayConfig.player.maxHp;
   private invincibleUntil = 0;
   private damageFlashUntil = 0;
@@ -152,7 +151,7 @@ export class GameScene extends Phaser.Scene {
     this.suppressPointerPulseUntilReleased = false;
     this.pulseSuppressedUntil = 0;
     this.combo = 0;
-    this.comboExpiresAt = 0;
+    this.comboGraceRemainingMs = 0;
     this.experience = 0;
     this.level = 1;
     this.expToNextLevel = gameplayConfig.progression.baseExpToNextLevel;
@@ -199,11 +198,11 @@ export class GameScene extends Phaser.Scene {
     this.drawCore();
     this.setupCamera();
     this.addHud();
-    this.input.keyboard!.on('keydown-F3', this.toggleDebugDisplay, this);
-    this.input.keyboard!.on('keydown-F6', this.debugLevelUp, this);
-    this.input.keyboard!.on('keydown-F7', this.debugHealPlayer, this);
-    this.input.keyboard!.on('keydown-F8', this.debugSpawnBoss, this);
-    this.input.keyboard!.on('keydown-F9', this.debugClearEnemies, this);
+    this.input.keyboard!.on('keydown-TAB', this.toggleDebugDisplay, this);
+    this.input.keyboard!.on('keydown-L', this.debugLevelUp, this);
+    this.input.keyboard!.on('keydown-H', this.debugHealPlayer, this);
+    this.input.keyboard!.on('keydown-B', this.debugSpawnBoss, this);
+    this.input.keyboard!.on('keydown-K', this.debugClearEnemies, this);
     this.input.keyboard!.on('keydown-M', this.toggleMute, this);
     this.input.keyboard!.on('keydown-SPACE', this.resumeAudio, this);
     this.input.on('pointerdown', this.resumeAudio, this);
@@ -259,7 +258,7 @@ export class GameScene extends Phaser.Scene {
     this.updateChargeRing(time);
     this.updateEnemies(scaledDelta);
     this.updateExpOrbs(scaledDelta);
-    this.updateCombo(time);
+    this.updateCombo(delta);
   }
 
   private drawGrid(): void {
@@ -842,9 +841,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getActiveCombo(): number {
-    if (this.combo > 0 && this.time.now >= this.comboExpiresAt) {
+    if (this.combo > 0 && this.comboGraceRemainingMs <= 0) {
       this.combo = 0;
-      this.comboExpiresAt = 0;
+      this.comboGraceRemainingMs = 0;
       this.updateComboText();
       this.updateUpgradeStatusHud();
     }
@@ -867,7 +866,7 @@ export class GameScene extends Phaser.Scene {
     const previousCombo = this.combo;
 
     this.combo += comboGain;
-    this.comboExpiresAt = this.time.now + gameplayConfig.combo.graceMs + this.comboGraceBonusMs;
+    this.comboGraceRemainingMs = this.getComboGraceMs();
     this.runStatsSystem.recordCombo(this.combo);
     this.updateComboText();
     this.animateComboText();
@@ -891,7 +890,7 @@ export class GameScene extends Phaser.Scene {
 
     this.combo = Math.max(0, this.combo - gameplayConfig.combo.comboMissPenalty);
     if (this.combo <= 0) {
-      this.comboExpiresAt = 0;
+      this.comboGraceRemainingMs = 0;
     }
     this.updateComboText();
     this.updateUpgradeStatusHud();
@@ -930,10 +929,20 @@ export class GameScene extends Phaser.Scene {
     }, gameplayConfig.combo.slowMotionDurationMs);
   }
 
-  private updateCombo(time: number): void {
-    if (this.combo > 0 && time >= this.comboExpiresAt) {
+  private getComboGraceMs(): number {
+    return gameplayConfig.combo.graceMs + this.comboGraceBonusMs;
+  }
+
+  private updateCombo(delta: number): void {
+    if (this.combo <= 0) {
+      return;
+    }
+
+    this.comboGraceRemainingMs = Math.max(0, this.comboGraceRemainingMs - delta);
+
+    if (this.comboGraceRemainingMs <= 0) {
       this.combo = 0;
-      this.comboExpiresAt = 0;
+      this.comboGraceRemainingMs = 0;
       this.updateComboText();
       this.updateUpgradeStatusHud();
     }
@@ -1317,7 +1326,22 @@ export class GameScene extends Phaser.Scene {
     graphics.strokePath();
   }
 
+  private isTextEntryActive(): boolean {
+    const activeElement = document.activeElement;
+
+    return (
+      activeElement instanceof HTMLInputElement ||
+      activeElement instanceof HTMLTextAreaElement ||
+      activeElement instanceof HTMLSelectElement ||
+      (activeElement instanceof HTMLElement && activeElement.isContentEditable)
+    );
+  }
+
   private toggleDebugDisplay(event?: KeyboardEvent): void {
+    if (this.isTextEntryActive()) {
+      return;
+    }
+
     event?.preventDefault();
     this.debugVisible = !this.debugVisible;
     this.debugText.setVisible(this.debugVisible);
@@ -1325,7 +1349,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private canUseDebugHotkey(event?: KeyboardEvent): boolean {
-    if (!this.debugVisible) {
+    if (!this.debugVisible || this.isTextEntryActive()) {
       return false;
     }
 
@@ -1454,7 +1478,6 @@ export class GameScene extends Phaser.Scene {
 
     if (!this.isPaused) {
       this.isPaused = true;
-      this.pausedAt = this.time.now;
       this.isCharging = false;
       this.chargeRing.clear();
       this.enemySpawnTimer.paused = true;
@@ -1469,12 +1492,6 @@ export class GameScene extends Phaser.Scene {
   private closePauseMenu(): void {
     if (!this.isPaused) {
       return;
-    }
-
-    const pausedDuration = this.time.now - this.pausedAt;
-
-    if (this.comboExpiresAt > 0) {
-      this.comboExpiresAt += pausedDuration;
     }
 
     this.isPaused = false;
@@ -1958,7 +1975,7 @@ export class GameScene extends Phaser.Scene {
         `${this.t('enemyDensity')}: x${this.enemySpawnRateMultiplier.toFixed(2)}`,
         `Shockwave Chain: ${this.lastShockwaveChainCount} / max ${this.recentMaxShockwaveChainCount}`,
         `${this.t('score')}: ${stats.score}`,
-        'F6 Lv+  F7 Heal  F8 Boss  F9 Clear',
+        'L Lv+  H Heal  B Boss  K Clear',
       ].join('\n'),
     );
   }

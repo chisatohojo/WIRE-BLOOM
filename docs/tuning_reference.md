@@ -70,7 +70,7 @@
 
 - `combo.comboPerEnemyDefeated`: 敵1体撃破ごとのコンボ増加量
 - `combo.comboMissPenalty`: 撃破0パルス時のコンボ減少量
-- `combo.graceMs`: コンボ継続猶予
+- `combo.graceMs`: コンボ継続猶予。通常プレイ中だけ減り、Level UP、Pause、Game Over中は止まる
 - `combo.screenShakeStrength`: コンボ画面揺れ基礎値
 - `combo.slowMotionDurationMs`: 節目コンボのスローモーション時間
 - `shockwave.damage`: shockwaveダメージ
@@ -125,9 +125,9 @@
 
 ## Debug Hotkeys
 
-F3デバッグ表示がONの時だけ有効です。
+`Tab` でデバッグ表示を切り替えます。以下はデバッグ表示がONの時だけ有効です。
 
-- `F6`: レベルを1上げる
-- `F7`: HPを1回復
-- `F8`: 近くにボスを1体スポーン
-- `F9`: 敵を全消去
+- `L`: レベルを1上げる
+- `H`: HPを1回復
+- `B`: 近くにボスを1体スポーン
+- `K`: 敵を全消去
