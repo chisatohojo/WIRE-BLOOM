@@ -60,6 +60,7 @@ export class GameScene extends Phaser.Scene {
   private expText!: Phaser.GameObjects.Text;
   private hpText!: Phaser.GameObjects.Text;
   private upgradeStatusText!: Phaser.GameObjects.Text;
+  private debugPanel!: Phaser.GameObjects.Graphics;
   private debugText!: Phaser.GameObjects.Text;
   private localization!: LocalizationSystem;
   private settingsSystem!: SettingsSystem;
@@ -360,17 +361,19 @@ export class GameScene extends Phaser.Scene {
     }).setScrollFactor(0);
     this.upgradeStatusText.setDepth(12);
 
+    this.debugPanel = this.add.graphics()
+      .setDepth(39)
+      .setScrollFactor(0)
+      .setVisible(false);
+
     this.debugText = this.add
-      .text(24, 78, '', {
+      .text(24, this.scale.height - 24, '', {
         color: colors.text,
         fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '14px',
-        backgroundColor: '#06181c',
-        padding: {
-          x: 8,
-          y: 6,
-        },
+        fontSize: '13px',
+        lineSpacing: 2,
       })
+      .setOrigin(0, 1)
       .setDepth(40)
       .setScrollFactor(0)
       .setVisible(false);
@@ -1344,6 +1347,7 @@ export class GameScene extends Phaser.Scene {
 
     event?.preventDefault();
     this.debugVisible = !this.debugVisible;
+    this.debugPanel.setVisible(this.debugVisible);
     this.debugText.setVisible(this.debugVisible);
     this.updateDebugDisplay(this.time.now);
   }
@@ -1978,6 +1982,26 @@ export class GameScene extends Phaser.Scene {
         'L Lv+  H Heal  B Boss  K Clear',
       ].join('\n'),
     );
+    this.layoutDebugWindow();
+  }
+
+  private layoutDebugWindow(): void {
+    const paddingX = 10;
+    const paddingY = 8;
+    this.debugText.setPosition(24, this.scale.height - 24);
+
+    const x = this.debugText.x - paddingX;
+    const y = this.debugText.y - this.debugText.height - paddingY;
+    const width = this.debugText.width + paddingX * 2;
+    const height = this.debugText.height + paddingY * 2;
+
+    this.debugPanel.clear();
+    this.debugPanel.fillStyle(colors.overlayPanel, 0.44);
+    this.debugPanel.fillRect(x, y, width, height);
+    this.debugPanel.lineStyle(1, colors.coreStroke, 0.32);
+    this.debugPanel.strokeRect(x, y, width, height);
+    this.debugPanel.lineStyle(1, colors.pulseAccent, 0.24);
+    this.debugPanel.lineBetween(x + 6, y + 6, x + 6, y + height - 6);
   }
 
   private getEnemyTypeDebugText(): string {
